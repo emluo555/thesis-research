@@ -7,10 +7,10 @@ from tam import TAM
 import argparse
 
 
-def tam_demo_for_qwen3_vl(image_path, prompt_text, save_dir='vis_results'):
+def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_results'):
     # Load Qwen2-VL model and processor
     # huge note to self: Qwen2-VL-7B does not work
-    model_name = "Qwen/Qwen3-VL-8B-Instruct"
+    model_name = model_name
     
     model = Qwen3VLForConditionalGeneration.from_pretrained(
         model_name, torch_dtype="auto", device_map="auto", local_files_only=True
@@ -29,6 +29,15 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, save_dir='vis_results'):
     # print("messages ", messages)
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     # print("TEXT ", type(text))
+    system_start_seq = processor.tokenizer(
+        "<|im_start|>system\n", add_special_tokens=False)["input_ids"]
+    system_end_seq = processor.tokenizer(
+        "<|im_end|>\n", add_special_tokens=False)["input_ids"]
+
+    print("system_start_seq:", system_start_seq)
+    print("system_end_seq:", system_end_seq)
+
+    
     image_inputs, video_inputs = process_vision_info(messages)
     # print("image_inputs and video_inputs: ", image_inputs, video_inputs)
     inputs = processor(text=[text], images=image_inputs, videos=video_inputs, padding=True, return_tensors="pt")
@@ -47,16 +56,42 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, save_dir='vis_results'):
     generated_ids = outputs.sequences
 
     # === TAM code part ====
+    print("hidden states shape: ", len(outputs.hidden_states))
+    print("features shape: ", len(outputs.hidden_states[0]))
+    print("layer length: ", len(outputs.hidden_states[0][0]))
 
     # Compute logits from last hidden states with vocab classifier for TAM
     logits = [model.lm_head(feats[-1]) for feats in outputs.hidden_states]
+    last_step = outputs.hidden_states[-1]   # list of 37 layers
+
+    per_layer_logits = []
+
+    for layer_hs in last_step:
+        # layer_hs shape: (1, 1, hidden_dim) at last step
+        last_token_hs = layer_hs[:, -1:, :]       # keep last token only => (1, 1, hidden_dim)
+        new_logits = model.lm_head(last_token_hs)     # => (1, 1, vocab_size)
+        per_layer_logits.append(new_logits)
+
+    print('per layer logits', len(per_layer_logits))         # 37 layers
+    print(per_layer_logits[0].shape)  # torch.Size([1, 1, 151936])
+
+    layer_logits = [
+        [model.lm_head(layer_hs) for layer_hs in feats]
+        for feats in outputs.hidden_states
+    ]
+    print('-----------logit shape-------')
+    print('len logits = ', len(logits))
+    print('shape logits = ', logits[-1].shape) # torch.Size([1, 1, 151936])
+    print(len(layer_logits), len(layer_logits[0])) # 2 37
+    print(layer_logits[0][0].shape) # torch.Size([1, 669, 151936])
 
     # Define special token IDs to separate image/prompt/answer tokens
     # See TAM in tam.py about its usage. See ids from the specific model.
     special_ids = {
         'img_id': [151652, 151653],  
         'prompt_id': [151653, [151645, 198, 151644, 77091]], 
-        'answer_id': [[198, 151644, 77091, 198], -1] 
+        'answer_id': [[198, 151644, 77091, 198], -1], 
+        'system_id': [system_start_seq, system_end_seq]
     }
 
     # get shape of vision output
@@ -86,16 +121,16 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, save_dir='vis_results'):
     raw_map_records = []
     for i in range(len(logits)):
         img_map = TAM(
-            generated_ids[0].cpu().tolist(),
-            vision_shape,
-            logits,
-            special_ids,
-            vis_inputs,
-            processor,
-            os.path.join(save_dir, str(i) + '.jpg'),
-            i,
-            raw_map_records,
-            False)
+            tokens = generated_ids[0].cpu().tolist(),
+            vision_shape = vision_shape,
+            logit_list = logits,
+            special_ids = special_ids,
+            vision_input = vis_inputs,
+            processor = processor,
+            save_fn = os.path.join(save_dir, str(i) + '.jpg'),
+            target_token = i,
+            img_scores_list = raw_map_records,
+            eval_only = False)
 
 
 if __name__ == "__main__":
@@ -104,11 +139,13 @@ if __name__ == "__main__":
     parser.add_argument("--img_path", type=str, required=True)
     parser.add_argument("--prompt", type=str, required=True)
     parser.add_argument("--img_save_dir", type=str, required=True)
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-VL-8B-Instruct")
     args = parser.parse_args()
 
     img_path = args.img_path
     prompt = args.prompt
     img_save_dir = args.img_save_dir
-   
-    tam_demo_for_qwen3_vl(img_path, prompt, save_dir=img_save_dir)
+    model_name = args.model_name
+
+    tam_demo_for_qwen3_vl(img_path, prompt, model_name, save_dir=img_save_dir)
 
