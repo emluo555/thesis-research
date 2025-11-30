@@ -5,6 +5,7 @@ from qwen_utils import process_vision_info
 from PIL import Image
 from tam import TAM
 import argparse
+from layer_analysis import plot_activations_all_layers
 
 
 def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_results'):
@@ -62,28 +63,24 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_res
 
     # Compute logits from last hidden states with vocab classifier for TAM
     logits = [model.lm_head(feats[-1]) for feats in outputs.hidden_states]
-    last_step = outputs.hidden_states[-1]   # list of 37 layers
 
+    
     per_layer_logits = []
+    # go through each generated token 
+    for i in range(len(outputs.hidden_states)):   
+        curr_step = outputs.hidden_states[i]   # list of 37 layers
+        curr_step_layer_logits = []
 
-    for layer_hs in last_step:
-        # layer_hs shape: (1, 1, hidden_dim) at last step
-        last_token_hs = layer_hs[:, -1:, :]       # keep last token only => (1, 1, hidden_dim)
-        new_logits = model.lm_head(last_token_hs)     # => (1, 1, vocab_size)
-        per_layer_logits.append(new_logits)
+        for layer_hs in curr_step:
+            # layer_hs shape: (1, 1, hidden_dim)
+            last_token_hs = layer_hs[:, -1:, :]       # keep last token only => (1, 1, hidden_dim)
+            new_logits = model.lm_head(last_token_hs)     # => (1, 1, vocab_size)
+            curr_step_layer_logits.append(new_logits)
 
-    print('per layer logits', len(per_layer_logits))         # 37 layers
-    print(per_layer_logits[0].shape)  # torch.Size([1, 1, 151936])
+        per_layer_logits.append(curr_step_layer_logits)
 
-    layer_logits = [
-        [model.lm_head(layer_hs) for layer_hs in feats]
-        for feats in outputs.hidden_states
-    ]
-    print('-----------logit shape-------')
-    print('len logits = ', len(logits))
-    print('shape logits = ', logits[-1].shape) # torch.Size([1, 1, 151936])
-    print(len(layer_logits), len(layer_logits[0])) # 2 37
-    print(layer_logits[0][0].shape) # torch.Size([1, 669, 151936])
+    print('per layer logits', len(per_layer_logits), len(per_layer_logits[0]))         # number of generated tokens 
+    print(per_layer_logits[0][0].shape)  # torch.Size([1, 1, 151936])
 
     # Define special token IDs to separate image/prompt/answer tokens
     # See TAM in tam.py about its usage. See ids from the specific model.
@@ -117,10 +114,11 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_res
     # - raw_vis_records: list to collect intermediate visualization data
     # - eval only, False to vis
     # return TAM vision map for eval, saving multimodal TAM in the function
-
+    
     raw_map_records = []
+    all_per_layer_scores = []
     for i in range(len(logits)):
-        img_map = TAM(
+        img_map, per_layer_data = TAM(
             tokens = generated_ids[0].cpu().tolist(),
             vision_shape = vision_shape,
             logit_list = logits,
@@ -130,7 +128,28 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_res
             save_fn = os.path.join(save_dir, str(i) + '.jpg'),
             target_token = i,
             img_scores_list = raw_map_records,
-            eval_only = False)
+            eval_only = False,
+            per_layer_logits = per_layer_logits,
+            collect_per_layer = True
+        )
+        all_per_layer_scores.append(per_layer_data)
+    
+    input_seq_len = inputs['input_ids'].shape[1]
+
+    for i, per_layer_data in enumerate(all_per_layer_scores):
+        token_id = generated_ids[0][input_seq_len + i].item()
+        token_text = processor.tokenizer.decode([token_id])
+    
+        plot_activations_all_layers(
+            img_scores_per_layer=per_layer_data['img_scores_per_layer'],
+            txt_scores_per_layer=per_layer_data['txt_scores_per_layer'],
+            path=save_dir,
+            model_name="Qwen3-VL",
+            target_token_idx=i,
+            target_token=token_text
+        )
+        
+
 
 
 if __name__ == "__main__":
