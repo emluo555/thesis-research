@@ -5,18 +5,18 @@ from qwen_utils import process_vision_info
 from PIL import Image
 from tam import TAM
 import argparse
-from layer_analysis import plot_activations_all_layers
+from layer_analysis import plot_activations_all_layers, append_tam_scores_csv
 
 
-def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_results'):
+def tam_demo_for_qwen3_vl(image_path, prompt_text, model_path, model_name, save_dir='vis_results'):
     # Load Qwen2-VL model and processor
     # huge note to self: Qwen2-VL-7B does not work
-    model_name = model_name
+    model_path = model_path
     
     model = Qwen3VLForConditionalGeneration.from_pretrained(
-        model_name, torch_dtype="auto", device_map="auto", local_files_only=True
+        model_path, torch_dtype="auto", device_map="auto", local_files_only=True
     )
-    processor = AutoProcessor.from_pretrained(model_name, local_files_only=True)
+    processor = AutoProcessor.from_pretrained(model_path, local_files_only=True)
     # img = Image.open(image_path).convert("RGB")
 
     # Prepare input message with image/video and prompt
@@ -117,7 +117,7 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_res
     for token_idx in range(num_tokens):
         logit_scores_for_token = []
         for layer_idx in range(num_layers):
-
+            run_vis = (layer_idx == num_layers - 1)  # only visualize last layer
             img_map, per_layer_scores = TAM(
                 tokens = generated_ids[0].cpu().tolist(),
                 vision_shape = vision_shape,
@@ -125,10 +125,11 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_res
                 special_ids = special_ids,
                 vision_input = vis_inputs,
                 processor = processor,
-                save_fn = os.path.join(save_dir, f"{layer_idx}_{token_idx}.jpg"),
+                save_fn = os.path.join(save_dir, f"{token_idx}_{layer_idx}.jpg"),
                 target_token = token_idx,                  # ✔ which token inside the layer list
                 img_scores_list = raw_map_records[layer_idx], 
-                eval_only = False
+                eval_only = False,
+                run_vis = run_vis
             )
 
             logit_scores_for_token.append(per_layer_scores)
@@ -141,9 +142,16 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_res
         plot_activations_all_layers(
             all_scores = logit_scores_for_token,         # shape: num_layers × scores
             path = '.',
-            model_name = "Qwen3-VL",
+            model_name = model_name,
             target_token_idx = token_idx,
             target_token = token_text
+        )
+        append_tam_scores_csv(
+            save_dir = '.', 
+            token_idx = token_idx, 
+            token_text = token_text, 
+            all_scores = logit_scores_for_token,
+            csv_name=f'tam_scores_{model_name}.csv'
         )
 
 
@@ -153,13 +161,15 @@ if __name__ == "__main__":
     parser.add_argument("--img_path", type=str, required=True)
     parser.add_argument("--prompt", type=str, required=True)
     parser.add_argument("--img_save_dir", type=str, required=True)
-    parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-VL-8B-Instruct")
+    parser.add_argument("--model_path", type=str, default="Qwen/Qwen3-VL-8B-Instruct")
+    parser.add_argument("--model_name", type=str, default="Qwen3-VL-8B-Instruct")
     args = parser.parse_args()
 
     img_path = args.img_path
     prompt = args.prompt
     img_save_dir = args.img_save_dir
+    model_path = args.model_path
     model_name = args.model_name
 
-    tam_demo_for_qwen3_vl(img_path, prompt, model_name, save_dir=img_save_dir)
+    tam_demo_for_qwen3_vl(img_path, prompt, model_path, model_name, save_dir=img_save_dir)
 

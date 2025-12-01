@@ -7,6 +7,8 @@ from matplotlib.patches import Rectangle
 import seaborn as sns
 from scipy.special import softmax
 from pathlib import Path
+import os
+import csv
 
 
 def plot_activations(img_scores, txt_scores, path, model_name, target_token_idx, target_token):
@@ -149,5 +151,26 @@ def plot_activations_all_layers(all_scores, path, model_name, target_token_idx, 
     
     print(f"All-layers plot saved to: {save_path}")
     return save_path
+
+def append_tam_scores_csv(save_dir, token_idx, token_text, all_scores, csv_name='tam_scores.csv'):
+    os.makedirs(save_dir, exist_ok=True)
+    csv_path = os.path.join(save_dir, csv_name)
+    write_header = not os.path.exists(csv_path)
+    with open(csv_path, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(['token_idx', 'token_text', 'layer_idx', 'min_vision_score', 'max_vision_score', 'mean_vision_score', 'std_dev_vision_score', 'min_text_score', 'max_text_score', 'mean_text_score', 'std_dev_text_score'])
+        for layer_idx, scores in enumerate(all_scores):
+            img_min = scores[0].min()
+            img_max = scores[0].max()
+            img_means = scores[0].mean()
+            img_std = scores[0].std()
+
+            txt_min = scores[1].min()
+            txt_max = scores[1].max()
+            txt_means = scores[1].mean()
+            txt_std = scores[1].std()
+
+            writer.writerow([token_idx, token_text, layer_idx, img_min, img_max, img_means, img_std, txt_min, txt_max, txt_means, txt_std])
 
 
