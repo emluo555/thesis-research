@@ -143,7 +143,7 @@ def generate_latex(words, relevances, cmap="bwr", font=r'{18pt}{21pt}'):
     return latex_code
 
 
-def compile_latex_to_jpg(latex_code, path='word_colors.pdf', delete_aux_files=True, dpi=500):
+def compile_latex_to_jpg(latex_code, path, delete_aux_files=True, dpi=500):
     """
     Compile a LaTeX string into a JPG image.
 
@@ -176,9 +176,9 @@ def compile_latex_to_jpg(latex_code, path='word_colors.pdf', delete_aux_files=Tr
     pix = page.get_pixmap(matrix=mat, alpha=False)
 
     #TODO: check this implementatin
-    print("path: ", path)
+    print("PATH: ", path)
     if delete_aux_files:
-        for suffix in ['.aux', '.log', '.tex', '.pdf']:
+        for suffix in ['.aux', '.log']:
             os.remove(path.with_suffix(suffix))
 
     getpngdata = pix.tobytes("png")
@@ -236,7 +236,7 @@ def vis_text(words, relevances, candidates, candi_scores, vis_token_idx, path='h
 
 
 def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, candidates, candi_scores, \
-                       vis_token_idx, img_save_fn, eval_only=False, vis_width=-1):
+                       vis_token_idx, img_save_fn, eval_only=False, vis_width=-1, run_vis_text = False):
     """
     Process multimodal tokens: visualizing combined image and text activations with normalizing, filtering, and blending scores.
 
@@ -280,6 +280,7 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
     eval_only = True if img_save_fn == "" else False
 
     # for multiple imgs
+    txt_map = None
     if isinstance(vision_shape[0], tuple):
         resized_img, img_map = [], []
         start_idx = 0
@@ -316,14 +317,15 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         out_img = np.concatenate(out_img, 1)
 
         # text vis via latex
-        try:
-            txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn, font=r'{5pt}{6pt}')
-        except:
-            print('Skip text visualization, please check the installation of texlive-xetex.')
-            return out_img, img_map, output_layer_scores
+        if run_vis_text:
+            try:
+                txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn, font=r'{5pt}{6pt}')
+            except:
+                print('Skip text visualization, please check the installation of texlive-xetex.')
+                return out_img, img_map, output_layer_scores
         
         if not isinstance(txt_map, np.ndarray):
-            print('Skip txt visualization, please check weather the text special character compatible with LaTeX.')
+            print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
             return out_img, img_map, output_layer_scores
 
         # concat multimodal vis
@@ -355,14 +357,15 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         out_img = img_map * 0.5 + raw_img * 0.5
 
         # vis text via latex
-        try:
-            txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn)
-        except:
-            print('Skip text visualization, please check the installation of texlive-xetex.')
-            return out_img, img_scores, output_layer_scores
+        if run_vis_text:
+            try:
+                txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn)
+            except:
+                print('Skip text visualization, please check the installation of texlive-xetex.')
+                return out_img, img_scores, output_layer_scores
 
         if not isinstance(txt_map, np.ndarray):
-            print('Skip txt visualization, please check weather the text special character compatible with LaTeX.')
+            print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
             return out_img, img_scores, output_layer_scores
 
         txt_map = cv2.resize(txt_map, (w, int(float(txt_map.shape[0]) / float(txt_map.shape[1]) * w)))
@@ -391,14 +394,15 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         out_img = np.concatenate(out_img, 1)
 
         # vis text via latex
-        try:
-            txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn, font=r'{5pt}{6pt}')
-        except:
-            print('Skip text visualization, please check the installation of texlive-xetex.')
-            return out_img, img_scores, output_layer_scores
+        if run_vis_text:
+            try:
+                txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn, font=r'{5pt}{6pt}')
+            except:
+                print('Skip text visualization, please check the installation of texlive-xetex.')
+                return out_img, img_scores, output_layer_scores
 
         if not isinstance(txt_map, np.ndarray):
-            print('Skip txt visualization, please check weather the text special character compatible with LaTeX.')
+            print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
             return out_img, img_scores, output_layer_scores
 
         txt_map = cv2.resize(txt_map, (int(w * b), int(float(txt_map.shape[0]) / float(txt_map.shape[1]) * w * b)))
@@ -447,7 +451,7 @@ def id2idx(inp_id, target_id, return_last=False):
 
 
 def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
-        processor, save_fn, target_token, img_scores_list, eval_only=False):
+        processor, save_fn, target_token, img_scores_list, eval_only=False, run_vis=False):
 
     """
     Generate a Token Activation Map (TAM) with optional Estimated Causal Inference (ECI) 
@@ -538,7 +542,7 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
         for t in range(len(prompt) + 1):
             # recursion to process prompt tokens
             img_map = TAM(tokens, vision_shape, logit_list, special_ids, vision_input, processor, \
-                          save_fn if t == len(prompt) else '', [0, t], img_scores_list, eval_only)
+                          save_fn if t == len(prompt) else '', [0, t], img_scores_list, eval_only, run_vis)
 
             ## the first prompt token is used to reflect the differenec of activation degrees
             if t == 0:
@@ -619,13 +623,13 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
     
     # apply the multimodal_process to obtain TAM
     vis_img, img_map, output_layer_scores = multimodal_process(cv_img, vision_shape, img_scores, txt_scores, txt_all, candidates, candi_scores, vis_token_idx, \
-            save_fn, eval_only=eval_only, vis_width=-1 if eval_only else 500)
+            save_fn, eval_only=eval_only, vis_width=-1 if eval_only else 500, run_vis_text=run_vis)
 
     # print("boolean: ", "save_fn = ", save_fn, vis_token_idx < (len(txt_all) - 1), isinstance(vis_img, np.ndarray))
     # print(save_fn, vis_img)
-    # if save_fn != '' and vis_token_idx < (len(txt_all) - 1) and isinstance(vis_img, np.ndarray):
-    #     os.makedirs(os.path.dirname(save_fn), exist_ok=True)
-    #     cv2.imwrite(save_fn, vis_img)
-    #     print("img saved to ", save_fn)
+    if run_vis and save_fn != '' and vis_token_idx < (len(txt_all) - 1) and isinstance(vis_img, np.ndarray):
+        os.makedirs(os.path.dirname(save_fn), exist_ok=True)
+        cv2.imwrite(save_fn, vis_img)
+        print("img saved to ", save_fn)
     
     return img_map, output_layer_scores
