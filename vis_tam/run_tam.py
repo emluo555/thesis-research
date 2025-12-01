@@ -62,24 +62,20 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_res
     print("layer length: ", len(outputs.hidden_states[0][0]))
 
     # Compute logits from last hidden states with vocab classifier for TAM
-    logits = [model.lm_head(feats[-1]) for feats in outputs.hidden_states]
-
+    logits = [model.lm_head(feats[-1]) for feats in outputs.hidden_states] # logits[0].shape = (1, seq_len, vocab_size)
     
-    per_layer_logits = []
+    num_tokens = len(outputs.hidden_states)
+    num_layers = len(outputs.hidden_states[0])
+    per_layer_logits = [ [] for _ in range(num_layers) ] # num_layers × num_tokens
+
     # go through each generated token 
-    for i in range(len(outputs.hidden_states)):   
-        curr_step = outputs.hidden_states[i]   # list of 37 layers
-        curr_step_layer_logits = []
+    for t in range(num_tokens):
+        for layer in range(num_layers):
+            layer_hs = outputs.hidden_states[t][layer]  # (1, seq_len_t, hidden_dim)
+            logits = model.lm_head(layer_hs)       # (1, seq_len, vocab_size)
+            per_layer_logits[layer].append(logits) # store logits[layer][t]
 
-        for layer_hs in curr_step:
-            # layer_hs shape: (1, 1, hidden_dim)
-            last_token_hs = layer_hs[:, -1:, :]       # keep last token only => (1, 1, hidden_dim)
-            new_logits = model.lm_head(last_token_hs)     # => (1, 1, vocab_size)
-            curr_step_layer_logits.append(new_logits)
-
-        per_layer_logits.append(curr_step_layer_logits)
-
-    print('per layer logits', len(per_layer_logits), len(per_layer_logits[0]))         # number of generated tokens 
+    print('per layer logits', len(per_layer_logits), len(per_layer_logits[0]))  
     print(per_layer_logits[0][0].shape)  # torch.Size([1, 1, 151936])
 
     # Define special token IDs to separate image/prompt/answer tokens
@@ -115,41 +111,40 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_name, save_dir='vis_res
     # - eval only, False to vis
     # return TAM vision map for eval, saving multimodal TAM in the function
     
-    raw_map_records = []
-    all_per_layer_scores = []
-    for i in range(len(logits)):
-        img_map, per_layer_data = TAM(
-            tokens = generated_ids[0].cpu().tolist(),
-            vision_shape = vision_shape,
-            logit_list = logits,
-            special_ids = special_ids,
-            vision_input = vis_inputs,
-            processor = processor,
-            save_fn = os.path.join(save_dir, str(i) + '.jpg'),
-            target_token = i,
-            img_scores_list = raw_map_records,
-            eval_only = False,
-            per_layer_logits = per_layer_logits,
-            collect_per_layer = True
-        )
-        all_per_layer_scores.append(per_layer_data)
-    
     input_seq_len = inputs['input_ids'].shape[1]
+    raw_map_records = [[] for _ in range(num_layers)]  # num_layers × list of img maps
 
-    for i, per_layer_data in enumerate(all_per_layer_scores):
-        token_id = generated_ids[0][input_seq_len + i].item()
+    for token_idx in range(num_tokens):
+        logit_scores_for_token = []
+        for layer_idx in range(num_layers):
+
+            img_map, per_layer_scores = TAM(
+                tokens = generated_ids[0].cpu().tolist(),
+                vision_shape = vision_shape,
+                logit_list = per_layer_logits[layer_idx],   # ✔ full layer list
+                special_ids = special_ids,
+                vision_input = vis_inputs,
+                processor = processor,
+                save_fn = os.path.join(save_dir, f"{layer_idx}_{token_idx}.jpg"),
+                target_token = token_idx,                  # ✔ which token inside the layer list
+                img_scores_list = raw_map_records[layer_idx], 
+                eval_only = False
+            )
+
+            logit_scores_for_token.append(per_layer_scores)
+
+        # ---- DONE PROCESSING ALL LAYERS FOR THIS TOKEN ----
+
+        token_id = generated_ids[0][input_seq_len + token_idx].item()
         token_text = processor.tokenizer.decode([token_id])
-    
-        plot_activations_all_layers(
-            img_scores_per_layer=per_layer_data['img_scores_per_layer'],
-            txt_scores_per_layer=per_layer_data['txt_scores_per_layer'],
-            path=save_dir,
-            model_name="Qwen3-VL",
-            target_token_idx=i,
-            target_token=token_text
-        )
-        
 
+        plot_activations_all_layers(
+            all_scores = logit_scores_for_token,         # shape: num_layers × scores
+            path = '.',
+            model_name = "Qwen3-VL",
+            target_token_idx = token_idx,
+            target_token = token_text
+        )
 
 
 if __name__ == "__main__":

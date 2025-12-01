@@ -3,7 +3,6 @@ import fitz
 import numpy as np
 from scipy.optimize import minimize_scalar
 from pathlib import Path
-from layer_analysis import plot_activations, plot_activations_all_layers
 
 
 def rank_guassian_filter(img, kernel_size=3):
@@ -272,33 +271,11 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
     # normalize multimodal tokens
     txt_scores = txt_scores[:-1] # ignore self score
     all_scores = np.concatenate([img_scores, txt_scores], 0)
-    # Handle edge cases
-    if len(all_scores) == 0:
-        # Return default for empty scores
-        img_map = np.zeros(vision_shape if isinstance(vision_shape[0], int) else vision_shape[0])
-        return None, img_map
-
-    if all_scores.max() == all_scores.min():
-        # All same values - normalize to 0.5
-        all_scores = np.ones_like(all_scores) * 0.5
-    else:
-        all_scores = (all_scores - all_scores.min()) / (all_scores.max() - all_scores.min())
+    all_scores = (all_scores - all_scores.min()) / (all_scores.max() - all_scores.min())
     img_scores = all_scores[:len(img_scores)]
     txt_scores = all_scores[len(img_scores):]
 
-    chart_save_path = Path(img_save_fn).parent
-    print("chart save path", chart_save_path)
-
-    if chart_save_path != Path("."):
-        print('bar chart vis, before denoising')
-        plot_activations(
-            img_scores = img_scores,
-            txt_scores = txt_scores,
-            path = chart_save_path,
-            model_name = "Qwen3-VL",
-            target_token_idx = vis_token_idx,
-            target_token = txts[vis_token_idx]
-        )
+    output_layer_scores = [img_scores, txt_scores]
 
     eval_only = True if img_save_fn == "" else False
 
@@ -333,7 +310,7 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
 
         # eval only output
         if eval_only:
-            return None, img_map
+            return None, img_map, output_layer_scores
 
         out_img = [img_map[i] * 0.5 + resized_img[i] * 0.5 for i in range(len(vision_shape))]
         out_img = np.concatenate(out_img, 1)
@@ -343,17 +320,17 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
             txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn, font=r'{5pt}{6pt}')
         except:
             print('Skip text visualization, please check the installation of texlive-xetex.')
-            return out_img, img_map
+            return out_img, img_map, output_layer_scores
         
         if not isinstance(txt_map, np.ndarray):
             print('Skip txt visualization, please check weather the text special character compatible with LaTeX.')
-            return out_img, img_map
+            return out_img, img_map, output_layer_scores
 
         # concat multimodal vis
         txt_map = cv2.resize(txt_map, (out_img.shape[1], int(float(txt_map.shape[0]) / float(txt_map.shape[1]) * out_img.shape[1])))
         out_img = np.concatenate([out_img, txt_map], 0)
 
-        return out_img, img_map
+        return out_img, img_map, output_layer_scores
 
     # single img
     elif len(vision_shape) == 2:
@@ -369,7 +346,7 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         img_scores = (img_scores * 255).astype('uint8')
 
         if eval_only:
-            return None, img_scores
+            return None, img_scores, output_layer_scores
 
         img_map = cv2.applyColorMap(img_scores, cv2.COLORMAP_JET)
         img_map = cv2.resize(img_map, (w, h))
@@ -377,22 +354,21 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
             raw_img = cv2.resize(raw_img, (w, h))
         out_img = img_map * 0.5 + raw_img * 0.5
 
-        
         # vis text via latex
         try:
             txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn)
         except:
             print('Skip text visualization, please check the installation of texlive-xetex.')
-            return out_img, img_scores
+            return out_img, img_scores, output_layer_scores
 
         if not isinstance(txt_map, np.ndarray):
             print('Skip txt visualization, please check weather the text special character compatible with LaTeX.')
-            return out_img, img_scores
+            return out_img, img_scores, output_layer_scores
 
         txt_map = cv2.resize(txt_map, (w, int(float(txt_map.shape[0]) / float(txt_map.shape[1]) * w)))
         out_img = np.concatenate([out_img, txt_map], 0)
 
-        return out_img, img_scores
+        return out_img, img_scores, output_layer_scores
 
     # video
     else:
@@ -406,7 +382,7 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         img_scores = (img_scores * 255).astype('uint8')
 
         if eval_only:
-            return None, img_scores
+            return None, img_scores, output_layer_scores
 
         img_map = [cv2.resize(cv2.applyColorMap(_, cv2.COLORMAP_JET), (w, h)) for _ in img_scores]
         if vis_width > 0:
@@ -419,16 +395,16 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
             txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn, font=r'{5pt}{6pt}')
         except:
             print('Skip text visualization, please check the installation of texlive-xetex.')
-            return out_img, img_scores
+            return out_img, img_scores, output_layer_scores
 
         if not isinstance(txt_map, np.ndarray):
             print('Skip txt visualization, please check weather the text special character compatible with LaTeX.')
-            return out_img, img_scores
+            return out_img, img_scores, output_layer_scores
 
         txt_map = cv2.resize(txt_map, (int(w * b), int(float(txt_map.shape[0]) / float(txt_map.shape[1]) * w * b)))
         out_img = np.concatenate([out_img, txt_map], 0)
 
-        return out_img, img_scores
+        return out_img, img_scores, output_layer_scores
 
 
 
@@ -468,9 +444,10 @@ def id2idx(inp_id, target_id, return_last=False):
             idx = -1
     return idx
 
+
+
 def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
-        processor, save_fn, target_token, img_scores_list, eval_only=False,
-        per_layer_logits = None, collect_per_layer = False):
+        processor, save_fn, target_token, img_scores_list, eval_only=False):
 
     """
     Generate a Token Activation Map (TAM) with optional Estimated Causal Inference (ECI) 
@@ -517,12 +494,10 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
 
     """
 
-
     # start and end id for img, prompt and answer
     img_id = special_ids['img_id']
     prompt_id = special_ids['prompt_id'] # prompt text, start and end id
     answer_id = special_ids['answer_id'] # number of tokens between prompt and answer
-    system_id = special_ids['system_id'] # system text
     
     # if img_id is a int, take all tokens same to this id
     if len(img_id) == 1:
@@ -533,16 +508,13 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
     # convert vocab id to idx in tokens
     prompt_idx = [id2idx(tokens, prompt_id[0], True), id2idx(tokens, prompt_id[1])]
     answer_idx = [id2idx(tokens, answer_id[0], True), id2idx(tokens, answer_id[1])]
-    system_idx = [id2idx(tokens, system_id[0], True), id2idx(tokens, system_id[1])]
+
     # decode ids
 
     prompt = processor.tokenizer.tokenize(processor.batch_decode([tokens[prompt_idx[0] + 1: prompt_idx[1]]], \
             skip_special_tokens=False, clean_up_tokenization_spaces=False)[0])
     answer = processor.tokenizer.tokenize(processor.batch_decode([tokens[answer_idx[0] + 1:]], \
             skip_special_tokens=False, clean_up_tokenization_spaces=False)[0])
-    system = processor.tokenizer.tokenize(processor.batch_decode([tokens[system_idx[0] + 1: system_idx[1]]], \
-            skip_special_tokens=False, clean_up_tokenization_spaces=False)[0])
-
     txt_all = prompt + answer
 
     # round_idx indicates the round of generation, this_token_idx is for the exaplained target token
@@ -562,81 +534,52 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
         vis_token_idx = prompt_token_idx
 
     # vis prompt tokens at round 0
-    
-    first_per_layer_data = {}
     if round_idx == 0 and isinstance(target_token, int):
         for t in range(len(prompt) + 1):
             # recursion to process prompt tokens
-            img_map, per_layer_data = TAM(tokens, vision_shape, logit_list, special_ids, vision_input, processor, \
-                          save_fn if t == len(prompt) else '', [0, t], img_scores_list, eval_only,
-                          per_layer_logits, collect_per_layer)
+            img_map = TAM(tokens, vision_shape, logit_list, special_ids, vision_input, processor, \
+                          save_fn if t == len(prompt) else '', [0, t], img_scores_list, eval_only)
 
-            
             ## the first prompt token is used to reflect the differenec of activation degrees
-            
             if t == 0:
                 first_ori = img_map
-                if collect_per_layer :
-                    first_per_layer_data = per_layer_data
-        
-        return first_ori, first_per_layer_data if collect_per_layer else {}
 
-    use_per_layer = per_layer_logits is not None and len(per_layer_logits) > 0 and len(per_layer_logits[0]) > 0
-    
-    if use_per_layer:
-        num_layers = len(per_layer_logits[0])
-    else:
-        num_layers = 1
+        return first_ori
 
-    # Determine class ID using original logit_list (has full sequence)
+    # assign class id
     if round_idx == 0:
+
         # last token of round 0 is the first generated token
         if prompt_token_idx == len(prompt):
             this_token_idx = logit_list[0].shape[1] - 1
             cls_id = tokens[this_token_idx]
+
         # record the first prompt with greedy search
         elif prompt_token_idx == 0:
             cls_id = logit_list[0][0, prompt_idx[0] + 1].argmax(0)
+
         # other maps prompt tokens
         else:
             cls_id = tokens[this_token_idx]
+
     # generated tokens (round >= 1)
     else:
         cls_id = tokens[answer_idx[0] + round_idx + 1]
-        
-    # Storage for per-layer scores
-    per_layer_img_scores = []
-    per_layer_txt_scores = []    
-    print("NUM LAYERS: ", num_layers)
-    for layer_idx in range(num_layers):
-        if use_per_layer:
-            current_logit_list = [per_layer_logits[i][layer_idx] for i in range(len(per_layer_logits))]
-        else:
-            current_logit_list = logit_list
-        print("CURR LOGIT LIST ", len(current_logit_list), current_logit_list[0].shape)
 
-        # class activation map from logits of the target token class
-        scores = torch.cat([current_logit_list[_][0, :, cls_id] for _ in range(round_idx + 1)], -1).clip(min=0)
+    # class activation map from logits of the target token class
+    scores = torch.cat([logit_list[_][0, :, cls_id] for _ in range(round_idx + 1)], -1).clip(min=0)
 
-        # get relevance scores
-        scores = scores.detach().cpu().float().numpy()
-        prompt_scores = scores[prompt_idx[0] + 1: prompt_idx[1]]
-        last_prompt = scores[current_logit_list[0].shape[1] - 1: current_logit_list[0].shape[1]]
-        answer_scores = scores[answer_idx[0] + 1:]
-        # system_scores = scores[system_idx[0] + 1: system_idx[1]]
+    # get relevance scores
+    scores = scores.detach().cpu().float().numpy()
+    prompt_scores = scores[prompt_idx[0] + 1: prompt_idx[1]]
+    last_prompt = scores[logit_list[0].shape[1] - 1: logit_list[0].shape[1]]
+    answer_scores = scores[answer_idx[0] + 1:]
+    txt_scores = np.concatenate([prompt_scores, last_prompt, answer_scores], -1)
+    if isinstance(img_idx, list):
+        img_scores = scores[img_idx[0] + 1: img_idx[1]]
+    else:
+        img_scores = scores[img_idx]
 
-        txt_scores = np.concatenate([prompt_scores, last_prompt, answer_scores], -1)
-        if isinstance(img_idx, list):
-            img_scores = scores[img_idx[0] + 1: img_idx[1]]
-        else:
-            img_scores = scores[img_idx]
-
-        if collect_per_layer:
-            per_layer_img_scores.append(img_scores.copy())
-            per_layer_txt_scores.append(txt_scores.copy())
-        
-    img_scores = img_scores.copy()
-    txt_scores = txt_scores.copy()
     # save img_scores for next Estimated Causal Inference
     img_scores_list.append(img_scores)
 
@@ -646,21 +589,17 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
         for i in range(vis_token_idx):
             if i < len(txt_all) and txt_all[i] != txt_all[vis_token_idx]:
                 non_repeat_idx.append(i)
-       
-        # FIX 7: Add bounds checking
-        if len(non_repeat_idx) > 0:
-            txt_scores_ = txt_scores[non_repeat_idx]
-            img_scores_list_ = [img_scores_list[_] for _ in non_repeat_idx]
+        txt_scores_ = txt_scores[non_repeat_idx]
+        img_scores_list_ = [img_scores_list[_] for _ in non_repeat_idx]
 
-            # get the interference map of ECI
-            w = txt_scores_
-            w = w / (w.sum() + 1e-8)
-            interf_img_scores = (np.stack(img_scores_list_, 0) * w.reshape(-1, 1)).sum(0)
+        # get the interference map of ECI
+        w = txt_scores_
+        w = w / (w.sum() + 1e-8)
+        interf_img_scores = (np.stack(img_scores_list_, 0) * w.reshape(-1, 1)).sum(0)
 
-            # apply ECI with the least squares method and relu
-            scaled_map = least_squares(img_scores, interf_img_scores)
-            img_scores = (img_scores - interf_img_scores * scaled_map).clip(min=0)
-
+        # apply ECI with the least squares method and relu
+        scaled_map = least_squares(img_scores, interf_img_scores)
+        img_scores = (img_scores - interf_img_scores * scaled_map).clip(min=0)
 
     # prepare raw vision input
     if isinstance(vision_shape[0], tuple):
@@ -678,21 +617,15 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
     candi_scores = candi_scores.softmax(0)
     candidates = processor.batch_decode([[_] for _ in candi_ids])
     
-    #  apply the multimodal_process to obtain TAM
-    vis_img, img_map = multimodal_process(cv_img, vision_shape, img_scores, txt_scores, txt_all, candidates, candi_scores, vis_token_idx, \
+    # apply the multimodal_process to obtain TAM
+    vis_img, img_map, output_layer_scores = multimodal_process(cv_img, vision_shape, img_scores, txt_scores, txt_all, candidates, candi_scores, vis_token_idx, \
             save_fn, eval_only=eval_only, vis_width=-1 if eval_only else 500)
 
-    print("boolean: ", "save_fn = ", save_fn, vis_token_idx < (len(txt_all) - 1), isinstance(vis_img, np.ndarray))
+    # print("boolean: ", "save_fn = ", save_fn, vis_token_idx < (len(txt_all) - 1), isinstance(vis_img, np.ndarray))
     # print(save_fn, vis_img)
-    # COMMENT OUT FOR NOW
-    if save_fn != '' and vis_token_idx < (len(txt_all) - 1) and isinstance(vis_img, np.ndarray):
-        os.makedirs(os.path.dirname(save_fn), exist_ok=True)
-        cv2.imwrite(save_fn, vis_img)
-        print("img saved to ", save_fn)
+    # if save_fn != '' and vis_token_idx < (len(txt_all) - 1) and isinstance(vis_img, np.ndarray):
+    #     os.makedirs(os.path.dirname(save_fn), exist_ok=True)
+    #     cv2.imwrite(save_fn, vis_img)
+    #     print("img saved to ", save_fn)
     
-    if collect_per_layer:
-        return img_map, {
-            'img_scores_per_layer': per_layer_img_scores,
-            'txt_scores_per_layer': per_layer_txt_scores
-        }
-    return img_map, {}
+    return img_map, output_layer_scores

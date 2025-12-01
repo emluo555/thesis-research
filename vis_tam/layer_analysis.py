@@ -78,24 +78,22 @@ def plot_activations(img_scores, txt_scores, path, model_name, target_token_idx,
     return save_path
 
 
-def plot_activations_all_layers(img_scores_per_layer, txt_scores_per_layer, 
-                                path, model_name, target_token_idx, target_token):
+def plot_activations_all_layers(all_scores, path, model_name, target_token_idx, target_token):
     """
     Plot img_scores and txt_scores across all layers on one graph.
     
     Args:
-        img_scores_per_layer: list of np.ndarray, one per layer
-        txt_scores_per_layer: list of np.ndarray, one per layer  
+        all_scores: [[img_scores, txt_scores],.. x num_layers]
         path: Path to save the plot
         model_name: Name of the model
         target_token_idx: Index of target token
         target_token: String representation of target token
     """
-    num_layers = len(img_scores_per_layer)
+    num_layers = len(all_scores)
     
     # Compute mean activation per layer
-    img_means = [scores.mean() for scores in img_scores_per_layer]
-    txt_means = [scores.mean() for scores in txt_scores_per_layer]
+    img_means = [scores[0].mean() for scores in all_scores]
+    txt_means = [scores[1].mean() for scores in all_scores]
     
     # Create figure with two subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
@@ -112,7 +110,7 @@ def plot_activations_all_layers(img_scores_per_layer, txt_scores_per_layer,
     ax1.set_title('Mean Activation Across Layers', fontsize=12, fontweight='bold')
     ax1.legend(fontsize=10, frameon=True, edgecolor='black')
     ax1.grid(True, alpha=0.3)
-    ax1.set_xticks(layer_indices[::max(1, num_layers//10)])  # Show every nth layer
+    ax1.set_xticks(layer_indices[::1])  # tick for every layer
     
     # Plot 2: Stacked bar chart showing ratio at each layer
     img_softmax_per_layer = []
