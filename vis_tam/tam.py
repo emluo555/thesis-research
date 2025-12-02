@@ -325,7 +325,7 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
                 return out_img, img_map, output_layer_scores
         
         if not isinstance(txt_map, np.ndarray):
-            print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
+            # print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
             return out_img, img_map, output_layer_scores
 
         # concat multimodal vis
@@ -365,7 +365,7 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
                 return out_img, img_scores, output_layer_scores
 
         if not isinstance(txt_map, np.ndarray):
-            print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
+            # print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
             return out_img, img_scores, output_layer_scores
 
         txt_map = cv2.resize(txt_map, (w, int(float(txt_map.shape[0]) / float(txt_map.shape[1]) * w)))
@@ -402,7 +402,7 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
                 return out_img, img_scores, output_layer_scores
 
         if not isinstance(txt_map, np.ndarray):
-            print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
+            # print('Skip txt visualization, please check whether the text special character compatible with LaTeX.')
             return out_img, img_scores, output_layer_scores
 
         txt_map = cv2.resize(txt_map, (int(w * b), int(float(txt_map.shape[0]) / float(txt_map.shape[1]) * w * b)))
@@ -529,9 +529,9 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
     if isinstance(target_token, int):
         round_idx = target_token
         this_token_idx = -1 # last token of each answer round
-        vis_token_idx = len(prompt) + target_token
+        vis_token_idx = len(prompt) + target_token - 1
 
-    # for the first round, which contrains multiple prompt tokens to explain
+    # for the first round, which contains multiple prompt tokens to explain
     else:
         round_idx, prompt_token_idx = target_token
         this_token_idx = prompt_idx[0] + prompt_token_idx + 1
