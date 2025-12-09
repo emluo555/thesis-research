@@ -115,23 +115,23 @@ def plot_activations_all_layers(all_scores, path, model_name, target_token_idx, 
     ax1.set_xticks(layer_indices[::1])  # tick for every layer
     
     # Plot 2: Stacked bar chart showing ratio at each layer
-    img_softmax_per_layer = []
-    txt_softmax_per_layer = []
+    img_rel_per_layer = []
+    txt_rel_per_layer = []
     for i in range(num_layers):
-        values = [img_means[i], txt_means[i]]
-        softmax_vals = softmax(values)
-        img_softmax_per_layer.append(softmax_vals[0])
-        txt_softmax_per_layer.append(softmax_vals[1])
+        img_val, txt_val = img_means[i], txt_means[i]
+        total = img_val + txt_val
+        img_rel_per_layer.append(img_val / total if total > 0 else 0.5)
+        txt_rel_per_layer.append(txt_val / total if total > 0 else 0.5)
     
     x = layer_indices
     width = 0.8
-    ax2.bar(x, img_softmax_per_layer, width, label='Image Tokens', 
+    ax2.bar(x, img_rel_per_layer, width, label='Image Tokens', 
             color='#eaa1a6', edgecolor='gray', linewidth=0.5)
-    ax2.bar(x, txt_softmax_per_layer, width, bottom=img_softmax_per_layer,
+    ax2.bar(x, txt_rel_per_layer, width, bottom=img_rel_per_layer,
             label='Text Tokens', color='#afd3e6', edgecolor='gray', linewidth=0.5)
     ax2.set_xlabel('Layer', fontsize=12, fontweight='bold')
-    ax2.set_ylabel('Softmax Probability', fontsize=12, fontweight='bold')
-    ax2.set_title('Softmax Distribution Across Layers', fontsize=12, fontweight='bold')
+    ax2.set_ylabel('Relative Avg Contribution', fontsize=12, fontweight='bold')
+    ax2.set_title('Relative Avg Contribution Across Layers', fontsize=12, fontweight='bold')
     ax2.set_ylim(0, 1)
     ax2.legend(fontsize=10, frameon=True, edgecolor='black')
     ax2.grid(True, alpha=0.3, axis='y')
@@ -144,7 +144,7 @@ def plot_activations_all_layers(all_scores, path, model_name, target_token_idx, 
     plt.tight_layout()
     
     # Save
-    save_path = Path(path) / f"{model_name}_token_{target_token_idx}_all_layers.png"
+    save_path = Path(path) / f'{model_name}_token_{target_token_idx}_all_layers.png'
     save_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.close()
@@ -173,4 +173,38 @@ def append_tam_scores_csv(save_dir, token_idx, token_text, all_scores, csv_name=
 
             writer.writerow([token_idx, token_text, layer_idx, img_min, img_max, img_means, img_std, txt_min, txt_max, txt_means, txt_std])
 
+def append_full_layer_scores_csv(
+    save_dir,
+    token_idx,
+    token_text,
+    all_scores,
+    csv_name='tam_full_layer_scores.csv',
+    header=None
+):
+    os.makedirs(save_dir, exist_ok=True)
+    csv_path = os.path.join(save_dir, csv_name)
 
+    write_header = not os.path.exists(csv_path)
+
+    with open(csv_path, 'a', newline='') as f:
+        writer = csv.writer(f)
+
+        if write_header:
+            # Make dynamic column names: img_0, img_1, ..., txt_0, txt_1, ...
+            img_cols = [f"img_token_{i}" for i in range(len(all_scores[0][0].flatten()))]
+            txt_cols = [f"txt_token_{i}_'{header[i]}'" for i in range(len(header))]
+            writer.writerow(['token_idx', 'token_text', 'layer_idx'] + img_cols + txt_cols)
+
+        for layer_idx, scores in enumerate(all_scores):
+            img_scores = scores[0]
+            txt_scores = scores[1]
+
+            # Flatten scores
+            img_list = img_scores.flatten().tolist()
+            txt_list = txt_scores.flatten().tolist()
+            if layer_idx == 0:
+                print('img list length:', len(img_list), 'txt list length:', len(txt_list))
+
+            # One row: token info + all img scores + all text scores
+            row = [token_idx, token_text, layer_idx] + img_list + txt_list
+            writer.writerow(row)

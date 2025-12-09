@@ -5,11 +5,12 @@ from qwen_utils import process_vision_info
 from PIL import Image
 from tam import TAM
 import argparse
-from layer_analysis import plot_activations_all_layers, append_tam_scores_csv
+from layer_analysis import plot_activations_all_layers, append_tam_scores_csv, append_full_layer_scores_csv
 import json
 import random
 import glob
 import tqdm
+import numpy as np
 
 def load_dataset(dataset_path, random_n=None, data_range=None):
     with open(dataset_path, 'r') as f:
@@ -42,7 +43,8 @@ def tam_demo_for_qwen3_vl(data, model_path, model_name, save_dir):
         image_path = os.path.join(img_data_path, item['image_filename'])
         prompt_question = item['question']
 
-        prompt_text = f"{prompt_question} First THINK about the answer and wrap your thinking in <think> </think> tags. Then please respond with ONE word, you must wrap your final answer with <answer> and </answer> tags."
+        # prompt_text = f"{prompt_question} First THINK about the answer and wrap your thinking in <think> </think> tags. Then please respond with ONE word, you must wrap your final answer with <answer> and </answer> tags."
+        prompt_text = f"{prompt_question} Please respond with a phrase, you must wrap your final answer with <answer> and </answer> tags."
 
         messages = [{"role": "user", "content": [{"type": "image", "image": image_path}, {"type": "text", "text": prompt_text}]}]
         text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -93,24 +95,42 @@ def tam_demo_for_qwen3_vl(data, model_path, model_name, save_dir):
         vision_shape = (inputs['image_grid_thw'][0, 1] // 2, inputs['image_grid_thw'][0, 2] // 2)
         vis_inputs = image_inputs
 
+        print('vision shape:', vision_shape)
+
         # === TAM Visualization ===
+        prompt_ids = inputs["input_ids"][0]  # shape: (prompt_seq_len,)
         
+        print(np.count_nonzero(prompt_ids.cpu().numpy() == 151655))  # check how many img tokens
+        arr = np.array(prompt_ids.cpu().numpy())
+        start_idxs = np.where(arr == 151653)[0]
+        end_idxs   = np.where(arr == 151645)[0]
+        print(start_idxs, end_idxs, end_idxs[0] - start_idxs[0] - 1)
+
+        text_tokens_decoded = [processor.tokenizer.decode([prompt_ids[i].item()]) for i in range(start_idxs[0] + 1, end_idxs[0])]
+        prompt_len = len(text_tokens_decoded)
+        print("Prompt text tokens:", text_tokens_decoded, prompt_len)
         input_seq_len = inputs['input_ids'].shape[1]
+
+        # decode the generated text tokens
+        for token_idx in range(num_tokens):
+            token_id = generated_ids[0][input_seq_len + token_idx].item()
+            token_text = processor.tokenizer.decode([token_id])
+            text_tokens_decoded.append(token_text)
+        
         raw_map_records = [[] for _ in range(num_layers)]  # num_layers × list of img maps
         is_answer_token = False 
         decoded_so_far = ""
 
         for token_idx in range(num_tokens):
             logit_scores_for_token = []
-            token_id = generated_ids[0][input_seq_len + token_idx].item()
-            token_text = processor.tokenizer.decode([token_id])
+            token_text = text_tokens_decoded[prompt_len + token_idx]
+            print('token text ', token_text)
             decoded_so_far += token_text
-
             if "<answer>" in decoded_so_far: # indicate for next iteration that it is an answer token
                 is_answer_token = True
 
             for layer_idx in range(num_layers):
-                run_vis = (layer_idx == num_layers - 1) and (is_answer_token)  # only visualize last layer of answer tokens
+                run_vis = False # (layer_idx == num_layers - 1) and (is_answer_token)  # only visualize last layer of answer tokens
                 img_map, per_layer_scores = TAM(
                     tokens = generated_ids[0].cpu().tolist(),
                     vision_shape = vision_shape,
@@ -129,19 +149,28 @@ def tam_demo_for_qwen3_vl(data, model_path, model_name, save_dir):
 
             # ---- DONE PROCESSING ALL LAYERS FOR THIS TOKEN ----
 
-            plot_activations_all_layers(
-                all_scores = logit_scores_for_token,         # shape: num_layers × scores
-                path = os.path.join(save_dir, 'all_layer_plots'),
-                model_name = model_name,
-                target_token_idx = token_idx,
-                target_token = token_text
-            )
-            append_tam_scores_csv(
+            # plot_activations_all_layers(
+            #     all_scores = logit_scores_for_token,         # shape: num_layers × scores
+            #     path = os.path.join(save_dir, 'all_layer_plots'),
+            #     model_name = model_name,
+            #     target_token_idx = token_idx,
+            #     target_token = token_text
+            # )
+            # append_tam_scores_csv(
+            #     save_dir = save_dir, 
+            #     token_idx = token_idx, 
+            #     token_text = token_text, 
+            #     all_scores = logit_scores_for_token,
+            #     csv_name=f'tam_scores_{model_name}.csv'
+            # )
+
+            append_full_layer_scores_csv(
                 save_dir = save_dir, 
                 token_idx = token_idx, 
                 token_text = token_text, 
                 all_scores = logit_scores_for_token,
-                csv_name=f'tam_scores_{model_name}.csv'
+                csv_name=f'full_tam_scores_{model_name}.csv',
+                header = text_tokens_decoded
             )
 
 
