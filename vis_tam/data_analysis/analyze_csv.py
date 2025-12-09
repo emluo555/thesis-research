@@ -172,6 +172,68 @@ def plot_topk_mean_lines(csv_path, top_k=5):
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print(f"Plot saved to: {output_path}")
 
+def compute_max_tokens(csv_path):
+    df = pd.read_csv(csv_path)
+    df = df.fillna(0)
+
+    vision_cols = [c for c in df.columns if c.startswith("img_token")]
+    text_cols   = [c for c in df.columns if c.startswith("txt_token")]
+
+    # lookup table
+    token_text_map = df.groupby("token_idx")["token_text"].first().to_dict()
+
+    df_avg = df.groupby("token_idx").mean(numeric_only=True)
+
+    results = []
+    for token_idx in df_avg.index:
+        row = df_avg.loc[token_idx]
+
+        # Vision
+        vision_subset = row[vision_cols]
+        top_vision_token = vision_subset.idxmax()
+        top_vision_value = vision_subset.max()
+
+        # Text
+        text_subset = row[text_cols]
+        top_text_token = text_subset.idxmax()
+        top_text_value = text_subset.max()
+
+        results.append({
+            "token_idx": token_idx,
+            "token_text": token_text_map[token_idx],
+            "top_vision_token": top_vision_token,
+            "top_vision_value": top_vision_value,
+            "top_text_token": top_text_token,
+            "top_text_value": top_text_value
+        })
+
+    df_out = pd.DataFrame(results)
+    save_path = csv_path.rsplit('.', 1)[0] + f'_max_activations.csv'
+    df_out.to_csv(save_path, index=False)
+
+    col_widths = {col: max(len(col), df_out[col].astype(str).map(len).max())
+                  for col in df_out.columns}
+
+    lines = []
+
+    # Header
+    header = " | ".join(col.ljust(col_widths[col]) for col in df_out.columns)
+    separator = "-+-".join("-" * col_widths[col] for col in df_out.columns)
+
+    lines.append(header)
+    lines.append(separator)
+
+    # Rows
+    for _, row in df_out.iterrows():
+        line = " | ".join(str(row[col]).ljust(col_widths[col])
+                          for col in df_out.columns)
+        lines.append(line)
+    
+    save_text_path = csv_path.rsplit('.', 1)[0] + f'_text_table.txt'
+
+    # Write to text file
+    with open(save_text_path, "w") as f:
+        f.write("\n".join(lines))
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -186,3 +248,4 @@ if __name__ == "__main__":
     # plot_last_layer_token_scores(csv_file, start_idx, end_idx)
     plot_token_top_activations(csv_file, 3)
     plot_topk_mean_lines(csv_file, top_k=5)
+    compute_max_tokens(csv_file)
