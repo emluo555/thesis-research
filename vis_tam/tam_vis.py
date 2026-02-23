@@ -1,35 +1,31 @@
 """
-attention_vis.py - Visualization functions for causal attention analysis.
+tam_vis.py - Visualization functions for TAM (Token Activation Map) analysis.
 
-Provides two analysis modes:
-    Mode A (Deep Single-Token): Detailed causal attention for a chosen token i,
-        showing which prior tokens 0..i-1 contributed to it.
-    Mode B (Generation Summary): Compact overview across all generated tokens,
-        showing how attention evolves during generation.
+Mirrors attention_vis.py in structure and plot types, adapted for TAM data
+(hidden-state activations instead of attention weights).
 
-Also provides comparative plots for reasoning vs non-reasoning models and
-an HTML report generator.
+Provides:
+    Mode A (Deep Single-Token):  Detailed activation for a chosen generated token.
+    Mode B (Generation Summary): Overview across all generated tokens.
+    Structural plots:            Per-layer metrics, activation matrix.
+    Comparative plots:           Side-by-side comparison of two models.
+    HTML report:                 Index page embedding all plots.
 """
 
 import os
+import math
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from matplotlib.colors import Normalize, PowerNorm
+from matplotlib.colors import PowerNorm
 from typing import Optional, List, Dict, Tuple, Any
 
-try:
-    import seaborn as sns
-    HAS_SEABORN = True
-except ImportError:
-    HAS_SEABORN = False
-
-from attention_map import TokenRegions
+from tam_analyzer import TokenRegions
 
 # ------------------------------------------------------------------
-# Color and style constants
+# Color and style constants (matching attention_vis.py)
 # ------------------------------------------------------------------
 
 REGION_COLORS = {
@@ -60,7 +56,9 @@ plt.rcParams.update({
 
 def _ensure_dir(path: str):
     if path:
-        os.makedirs(os.path.dirname(path) if "/" in path else ".", exist_ok=True)
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
 
 
 def _save_or_show(fig, save_path: Optional[str]):
@@ -72,51 +70,48 @@ def _save_or_show(fig, save_path: Optional[str]):
 
 
 # ======================================================================
-# MODE A: Deep Single-Token Causal Inspection
+# MODE A: Deep Single-Token Inspection
 # ======================================================================
 
-def plot_causal_attention_bar(
-    attn_row: np.ndarray,
+def plot_activation_bar(
+    activation_row: np.ndarray,
     token_strings: List[str],
     token_regions: TokenRegions,
     token_idx: int,
-    layer_idx: Optional[int] = None,
     title: str = "",
     save_path: Optional[str] = None,
     max_text_tokens: int = 80,
 ):
-    """Bar chart of token i's causal attention over tokens 0..i-1.
+    """Bar chart of TAM activation scores for token i over all prior positions.
 
-    Bars are colored by region (image, prompt, generated, thinking).
     Image tokens are aggregated into a single bar for readability.
+    Bars are colored by region (system, image, prompt, thinking, answer, generated).
 
     Args:
-        attn_row: (token_idx+1,) attention weights (head-averaged for one layer,
-                  or averaged across all layers).
+        activation_row: (score_len,) normalized TAM scores (layer-averaged).
         token_strings: Full list of decoded token strings.
         token_regions: TokenRegions.
-        token_idx: The token being inspected.
-        layer_idx: If set, label indicates a specific layer; else "all layers".
+        token_idx: Absolute index of the token being inspected.
         title: Additional title text.
         save_path: Path to save the figure.
-        max_text_tokens: Maximum number of individual text token bars to show.
+        max_text_tokens: Maximum individual text token bars to show.
     """
     r = token_regions
-    row = attn_row[:token_idx + 1]
+    score_len = len(activation_row)
 
     # Aggregate image tokens into one bar
-    img_s, img_e = r.image_start, min(r.image_end, token_idx + 1)
-    img_agg = row[img_s:img_e].sum() if img_e > img_s else 0.0
+    img_s = r.image_start
+    img_e = min(r.image_end, score_len)
+    img_agg = activation_row[img_s:img_e].sum() if img_e > img_s else 0.0
 
-    # Build bar data: image aggregate + individual text tokens
     bar_labels = []
     bar_values = []
     bar_colors = []
 
-    # System tokens before image (usually few)
-    for j in range(0, min(r.image_start, token_idx + 1)):
+    # System tokens before image
+    for j in range(0, min(r.image_start, score_len)):
         bar_labels.append(f"[{j}] {_short(token_strings[j])}")
-        bar_values.append(float(row[j]))
+        bar_values.append(float(activation_row[j]))
         bar_colors.append(REGION_COLORS["system"])
 
     # Aggregated image
@@ -125,57 +120,62 @@ def plot_causal_attention_bar(
         bar_values.append(float(img_agg))
         bar_colors.append(REGION_COLORS["image"])
 
-    # Text tokens (prompt + generated up to token_idx)
-    text_start = min(r.prompt_start, token_idx + 1)
-    text_end = token_idx  # exclude token_idx itself
+    # Text tokens (prompt + generated up to score_len)
+    text_start = min(r.prompt_start, score_len)
+    text_end = score_len - 1
     text_indices = list(range(text_start, text_end + 1))
 
-    # Subsample if too many
+    # Skip image region indices
+    text_indices = [j for j in text_indices if j < r.image_start or j >= r.image_end]
+
     if len(text_indices) > max_text_tokens:
         step = len(text_indices) // max_text_tokens
         text_indices = text_indices[::step]
 
     for j in text_indices:
-        if j > token_idx:
+        if j >= score_len:
             break
         region = r.get_region_label(j)
-        bar_labels.append(f"[{j}] {_short(token_strings[j])}")
-        bar_values.append(float(row[j]))
+        lbl = token_strings[j] if j < len(token_strings) else "?"
+        bar_labels.append(f"[{j}] {_short(lbl)}")
+        bar_values.append(float(activation_row[j]))
         bar_colors.append(REGION_COLORS.get(region, "#888888"))
 
-    # Plot
     fig, ax = plt.subplots(figsize=(max(10, len(bar_labels) * 0.15), 5))
     x = np.arange(len(bar_labels))
     ax.bar(x, bar_values, color=bar_colors, width=0.8)
     ax.set_xticks(x)
     ax.set_xticklabels(bar_labels, rotation=90, fontsize=6)
-    ax.set_ylabel("Attention Weight")
-    layer_str = f"Layer {layer_idx}" if layer_idx is not None else "All Layers (avg)"
-    target_str = f"Token {token_idx}: '{_short(token_strings[token_idx])}'"
-    ax.set_title(f"Causal Attention for {target_str} | {layer_str}\n{title}")
+    ax.set_ylabel("TAM Activation Score")
 
-    # Legend — only show regions actually present in the bar chart
-    regions_present = _collect_regions_from_token_regions(r, token_idx)
-    _add_region_legend(ax, regions_present=regions_present)
+    target_str = (
+        f"Token {token_idx}: '{_short(token_strings[token_idx])}'"
+        if token_idx < len(token_strings)
+        else f"Token {token_idx}"
+    )
+    ax.set_title(f"TAM Activation for {target_str} | All Layers (avg)\n{title}")
+
+    regions_present = _collect_regions(r, score_len)
+    _add_region_legend(ax, regions_present)
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
 
-def plot_causal_image_heatmap(
+def plot_activation_image_heatmap(
     image: np.ndarray,
-    attn_row_image: np.ndarray,
+    activation_img: np.ndarray,
     vision_shape: Tuple[int, ...],
     token_idx: int,
     token_str: str = "",
     title: str = "",
     save_path: Optional[str] = None,
 ):
-    """Overlay token i's attention to image patches on the original image.
+    """3-panel image heatmap: Original | TAM Heatmap | Overlay.
 
     Args:
         image: Original image as (H, W, 3) RGB numpy array.
-        attn_row_image: (num_image_tokens,) attention weights for image region.
-        vision_shape: (H_tokens, W_tokens) shape of the vision token grid.
+        activation_img: (num_image_tokens,) TAM scores for image region.
+        vision_shape: (H_tokens, W_tokens) of the vision token grid.
         token_idx: Token being inspected.
         token_str: Decoded string for the token.
         title: Additional title text.
@@ -184,42 +184,35 @@ def plot_causal_image_heatmap(
     if len(vision_shape) == 2:
         h_tok, w_tok = vision_shape
     elif len(vision_shape) == 3:
-        # Video: use first frame shape
         _, h_tok, w_tok = vision_shape
     else:
         print(f"  Warning: unexpected vision_shape {vision_shape}, skipping heatmap")
         return
 
     expected_len = h_tok * w_tok
-    if len(attn_row_image) != expected_len:
-        # Try to truncate or pad
-        if len(attn_row_image) > expected_len:
-            attn_row_image = attn_row_image[:expected_len]
+    if len(activation_img) != expected_len:
+        if len(activation_img) > expected_len:
+            activation_img = activation_img[:expected_len]
         else:
-            attn_row_image = np.pad(
-                attn_row_image, (0, expected_len - len(attn_row_image))
+            activation_img = np.pad(
+                activation_img, (0, expected_len - len(activation_img))
             )
 
-    heatmap = attn_row_image.reshape(h_tok, w_tok)
+    heatmap = activation_img.reshape(h_tok, w_tok)
 
-    # Resize to image dimensions
     import cv2
     img_h, img_w = image.shape[:2]
     heatmap_resized = cv2.resize(
         heatmap.astype(np.float32), (img_w, img_h),
-        interpolation=cv2.INTER_LINEAR
+        interpolation=cv2.INTER_LINEAR,
     )
 
-    # Normalize
     hm_max = heatmap_resized.max()
     if hm_max > 0:
         heatmap_resized = heatmap_resized / hm_max
 
-    # Apply colormap
     heatmap_colored = plt.cm.jet(heatmap_resized)[:, :, :3]
     heatmap_colored = (heatmap_colored * 255).astype(np.uint8)
-
-    # Blend
     overlay = (0.5 * image + 0.5 * heatmap_colored).astype(np.uint8)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
@@ -228,37 +221,52 @@ def plot_causal_image_heatmap(
     axes[0].axis("off")
 
     axes[1].imshow(heatmap_resized, cmap="jet", vmin=0, vmax=1)
-    axes[1].set_title("Attention Heatmap")
+    axes[1].set_title("TAM Activation Heatmap")
     axes[1].axis("off")
 
     axes[2].imshow(overlay)
     axes[2].set_title("Overlay")
     axes[2].axis("off")
 
-    target_label = f"Token {token_idx}: '{token_str}'" if token_str else f"Token {token_idx}"
-    fig.suptitle(f"Image Attention for {target_label}\n{title}", fontsize=12)
+    target_label = (
+        f"Token {token_idx}: '{token_str}'" if token_str
+        else f"Token {token_idx}"
+    )
+    fig.suptitle(
+        f"Image Activation for {target_label}\n{title}", fontsize=12
+    )
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
 
 def generate_image_heatmap_gif(
     image: np.ndarray,
-    attention_matrices,
-    result,
+    result_raw_scores: List[List[np.ndarray]],
+    num_layers: int,
+    token_regions: "TokenRegions",
+    token_strings: List[str],
+    vision_shape: Tuple[int, ...],
+    input_len: int,
+    num_generated: int,
     title: str = "",
     save_path: Optional[str] = None,
     fps: int = 4,
 ):
-    """Create a GIF showing how the image attention heatmap evolves over
+    """Create a GIF showing how the TAM image heatmap evolves over
     generated tokens.
 
-    Each frame shows the overlay of the current token's image attention on
-    the original image, with the token string annotated.
+    Each frame shows the overlay of the current token's layer-averaged
+    image activation on the original image, with the token string annotated.
 
     Args:
         image: Original image as (H, W, 3) RGB numpy array.
-        attention_matrices: (L, H, S, S) attention tensor from AttentionResult.
-        result: Full AttentionResult (for token_regions, token_strings, vision_shape).
+        result_raw_scores: raw_scores from TAMResult.
+        num_layers: Number of model layers.
+        token_regions: TokenRegions for boundary info.
+        token_strings: Decoded token strings for the full sequence.
+        vision_shape: (H_tokens, W_tokens) of the vision grid.
+        input_len: Number of input tokens.
+        num_generated: Number of generated tokens.
         title: Model label for the frame title.
         save_path: Where to write the .gif file.
         fps: Frames per second for the GIF.
@@ -267,39 +275,51 @@ def generate_image_heatmap_gif(
     from PIL import Image as PILImage
     import cv2
 
-    if save_path is None or result.vision_shape is None:
+    if save_path is None or vision_shape is None:
         return
 
-    r = result.token_regions
-    if len(result.vision_shape) == 2:
-        h_tok, w_tok = result.vision_shape
-    elif len(result.vision_shape) == 3:
-        _, h_tok, w_tok = result.vision_shape
+    r = token_regions
+    if len(vision_shape) == 2:
+        h_tok, w_tok = vision_shape
+    elif len(vision_shape) == 3:
+        _, h_tok, w_tok = vision_shape
     else:
         return
 
     expected_len = h_tok * w_tok
     img_h, img_w = image.shape[:2]
-    seq_len = attention_matrices.shape[2]
 
-    # Determine answer-only range for generated tokens
-    answer_start = r.answer_start if r.answer_start is not None else r.generation_start
-    gen_end = min(r.total_len, seq_len)
+    # Determine answer-only range
+    answer_offset = (
+        (r.answer_start - input_len)
+        if r.answer_start is not None else 0
+    )
 
     frames = []
-    for tok_idx in range(answer_start, gen_end):
-        # Average attention across layers and heads for this token
-        row = attention_matrices[:, :, tok_idx, :tok_idx + 1].float().mean(dim=(0, 1)).numpy()
+    for gen_idx in range(answer_offset, num_generated):
+        # Layer-averaged activation for this generated token
+        layer_scores = [
+            result_raw_scores[gen_idx][l]
+            for l in range(num_layers)
+        ]
+        avg = np.mean(layer_scores, axis=0)
+
+        # Normalize
+        s_min, s_max = avg.min(), avg.max()
+        if s_max - s_min > 1e-8:
+            avg = (avg - s_min) / (s_max - s_min)
+        else:
+            avg = np.zeros_like(avg)
 
         # Extract image region
-        img_attn = row[r.image_start:r.image_end]
-        if len(img_attn) != expected_len:
-            if len(img_attn) > expected_len:
-                img_attn = img_attn[:expected_len]
+        img_act = avg[r.image_start:r.image_end]
+        if len(img_act) != expected_len:
+            if len(img_act) > expected_len:
+                img_act = img_act[:expected_len]
             else:
-                img_attn = np.pad(img_attn, (0, expected_len - len(img_attn)))
+                img_act = np.pad(img_act, (0, expected_len - len(img_act)))
 
-        heatmap = img_attn.reshape(h_tok, w_tok)
+        heatmap = img_act.reshape(h_tok, w_tok)
         heatmap_resized = cv2.resize(
             heatmap.astype(np.float32), (img_w, img_h),
             interpolation=cv2.INTER_LINEAR,
@@ -312,8 +332,9 @@ def generate_image_heatmap_gif(
         heatmap_colored = (heatmap_colored * 255).astype(np.uint8)
         overlay = (0.5 * image + 0.5 * heatmap_colored).astype(np.uint8)
 
-        tok_str = result.token_strings[tok_idx] if tok_idx < len(result.token_strings) else "?"
-        label = f"Token {tok_idx}: '{tok_str.strip()}'"
+        abs_idx = input_len + gen_idx
+        tok_str = token_strings[abs_idx] if abs_idx < len(token_strings) else "?"
+        label = f"Token {abs_idx}: '{tok_str.strip()}'"
 
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(overlay)
@@ -343,177 +364,78 @@ def generate_image_heatmap_gif(
         print(f"  Saved {len(frames)} frames to: {frames_dir}")
 
 
-def plot_causal_layer_head_grid(
-    per_layer_head: np.ndarray,
+def plot_activation_layer_grid(
+    per_layer: np.ndarray,
     token_idx: int,
     token_regions: TokenRegions,
     token_str: str = "",
-    selected_layers: Optional[List[int]] = None,
-    max_layers: int = 12,
+    max_layers: int = 36,
     save_path: Optional[str] = None,
 ):
-    """Grid showing token i's causal attention at each layer and head.
+    """Grid of bar charts showing TAM activation at each layer for token i.
+
+    Unlike the attention layer-x-head grid, TAM has no head dimension,
+    so this is a single-dimensional grid of layers arranged in rows/columns.
 
     Args:
-        per_layer_head: (L, H, token_idx+1) from get_causal_attention_for_token.
+        per_layer: (L, score_len) normalized activation at each layer.
         token_idx: Token being inspected.
         token_regions: TokenRegions.
         token_str: Decoded string for the token.
-        selected_layers: Layer indices (for labeling).
         max_layers: Maximum layers to show (subsamples if more).
         save_path: Path to save.
     """
-    L, H, seq = per_layer_head.shape
+    L, seq = per_layer.shape
     r = token_regions
 
     # Subsample layers if too many
     if L > max_layers:
         layer_step = L // max_layers
         layer_indices = list(range(0, L, layer_step))[:max_layers]
-        per_layer_head = per_layer_head[layer_indices]
+        per_layer = per_layer[layer_indices]
         L_display = len(layer_indices)
     else:
         layer_indices = list(range(L))
         L_display = L
 
-    layer_labels = (
-        [str(selected_layers[i]) for i in layer_indices]
-        if selected_layers
-        else [str(i) for i in layer_indices]
-    )
-
-    # For each layer/head, compute region-level summary (3 bars: image, prompt, gen)
-    num_heads_display = min(H, 16)
-    head_step = max(1, H // num_heads_display)
-    head_indices = list(range(0, H, head_step))[:num_heads_display]
+    # Arrange in a grid: determine rows and columns
+    ncols = min(6, L_display)
+    nrows = math.ceil(L_display / ncols)
 
     fig, axes = plt.subplots(
-        L_display, len(head_indices),
-        figsize=(len(head_indices) * 1.2, L_display * 0.8),
+        nrows, ncols,
+        figsize=(ncols * 2.5, nrows * 1.5),
         squeeze=False,
     )
 
-    for li, l in enumerate(range(L_display)):
-        for hi, h in enumerate(head_indices):
-            ax = axes[li][hi]
-            row = per_layer_head[l, h, :]
+    for idx in range(nrows * ncols):
+        row_i, col_i = divmod(idx, ncols)
+        ax = axes[row_i][col_i]
 
-            # Color each position by region
-            colors = []
-            for j in range(len(row)):
-                region = r.get_region_label(j)
-                colors.append(REGION_COLORS.get(region, "#888888"))
+        if idx >= L_display:
+            ax.set_visible(False)
+            continue
 
-            ax.bar(range(len(row)), row, color=colors, width=1.0)
-            ax.set_xlim(0, len(row))
-            ax.set_ylim(0, max(row.max() * 1.1, 0.01))
-            ax.set_xticks([])
-            ax.set_yticks([])
+        layer_row = per_layer[idx]
+        colors = [
+            REGION_COLORS.get(r.get_region_label(j), "#888888")
+            for j in range(len(layer_row))
+        ]
+        ax.bar(range(len(layer_row)), layer_row, color=colors, width=1.0)
+        ax.set_xlim(0, len(layer_row))
+        ax.set_ylim(0, max(layer_row.max() * 1.1, 0.01))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(f"L{layer_indices[idx]}", fontsize=7, pad=2)
 
-            if li == 0:
-                ax.set_title(f"H{head_indices[hi]}", fontsize=7)
-            if hi == 0:
-                ax.set_ylabel(f"L{layer_labels[li]}", fontsize=7)
-
-    target_label = f"Token {token_idx}: '{token_str}'" if token_str else f"Token {token_idx}"
+    target_label = (
+        f"Token {token_idx}: '{token_str}'" if token_str
+        else f"Token {token_idx}"
+    )
     fig.suptitle(
-        f"Causal Attention Grid (Layer x Head) for {target_label}",
+        f"TAM Activation Grid (per Layer) for {target_label}",
         fontsize=11,
     )
-    fig.tight_layout()
-    _save_or_show(fig, save_path)
-
-
-def plot_causal_rollout_to_input(
-    rollout_row: np.ndarray,
-    image: Optional[np.ndarray],
-    vision_shape: Optional[Tuple[int, ...]],
-    token_strings: List[str],
-    token_regions: TokenRegions,
-    token_idx: int,
-    title: str = "",
-    save_path: Optional[str] = None,
-):
-    """Effective causal influence from all input tokens to token i after rollout.
-
-    Shows image heatmap overlay + bar chart for text tokens.
-
-    Args:
-        rollout_row: (token_idx+1,) effective attention from rollout.
-        image: Original image as (H, W, 3) RGB.
-        vision_shape: (H_tok, W_tok) of vision tokens.
-        token_strings: Decoded token strings.
-        token_regions: TokenRegions.
-        token_idx: Token being inspected.
-        title: Additional title.
-        save_path: Path to save.
-    """
-    r = token_regions
-    has_image = (image is not None and vision_shape is not None
-                 and r.image_end > r.image_start)
-
-    if has_image:
-        fig = plt.figure(figsize=(16, 5))
-        gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1.5])
-        ax_img = fig.add_subplot(gs[0])
-        ax_bar = fig.add_subplot(gs[1])
-    else:
-        fig, ax_bar = plt.subplots(figsize=(12, 5))
-        ax_img = None
-
-    # Image heatmap
-    if has_image and ax_img is not None:
-        import cv2
-        img_attn = rollout_row[r.image_start:r.image_end]
-        if len(vision_shape) == 2:
-            h_tok, w_tok = vision_shape
-        else:
-            _, h_tok, w_tok = vision_shape
-        expected = h_tok * w_tok
-        if len(img_attn) > expected:
-            img_attn = img_attn[:expected]
-        elif len(img_attn) < expected:
-            img_attn = np.pad(img_attn, (0, expected - len(img_attn)))
-
-        heatmap = img_attn.reshape(h_tok, w_tok)
-        img_h, img_w = image.shape[:2]
-        hm_resized = cv2.resize(heatmap.astype(np.float32), (img_w, img_h))
-        hm_max = hm_resized.max()
-        if hm_max > 0:
-            hm_resized = hm_resized / hm_max
-        hm_color = (plt.cm.jet(hm_resized)[:, :, :3] * 255).astype(np.uint8)
-        overlay = (0.5 * image + 0.5 * hm_color).astype(np.uint8)
-        ax_img.imshow(overlay)
-        ax_img.set_title("Rollout: Image Attention")
-        ax_img.axis("off")
-
-    # Bar chart for text tokens
-    text_start = r.prompt_start
-    text_end = min(token_idx + 1, r.total_len)
-    bar_labels = []
-    bar_values = []
-    bar_colors = []
-
-    for j in range(text_start, text_end):
-        if j >= r.image_start and j < r.image_end:
-            continue
-        region = r.get_region_label(j)
-        bar_labels.append(f"[{j}] {_short(token_strings[j])}")
-        bar_values.append(float(rollout_row[j]) if j < len(rollout_row) else 0.0)
-        bar_colors.append(REGION_COLORS.get(region, "#888888"))
-
-    if bar_labels:
-        x = np.arange(len(bar_labels))
-        ax_bar.bar(x, bar_values, color=bar_colors, width=0.8)
-        ax_bar.set_xticks(x)
-        ax_bar.set_xticklabels(bar_labels, rotation=90, fontsize=5)
-        ax_bar.set_ylabel("Rollout Attention")
-        ax_bar.set_title("Rollout: Text Token Attention")
-        regions_present = _collect_regions_from_token_regions(r, token_idx)
-        _add_region_legend(ax_bar, regions_present=regions_present)
-
-    target_label = f"Token {token_idx}: '{_short(token_strings[token_idx])}'"
-    fig.suptitle(f"Attention Rollout to {target_label}\n{title}", fontsize=12)
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
@@ -522,42 +444,41 @@ def plot_causal_rollout_to_input(
 # MODE B: Generation Summary
 # ======================================================================
 
-def plot_attention_ratio_over_generation(
+def plot_activation_ratio_over_generation(
     summary: List[Dict],
     title: str = "",
     save_path: Optional[str] = None,
 ):
-    """Attention source distribution over generation.
+    """Stacked area chart of image/prompt/generated activation ratios.
 
-    Uses a stacked area chart when there are enough data points (>= 4), or
-    falls back to a stacked bar chart for short generations so that even a
-    single generated token is clearly visible.
+    Uses the same layout as the attention version: stacked area for >= 4
+    data points, stacked bar for short generations.
     """
     if not summary:
         return
 
     steps = [s["token_idx"] for s in summary]
-    img_ratios = [s["image_attn_ratio"] for s in summary]
-    prompt_ratios = [s["prompt_attn_ratio"] for s in summary]
-    gen_ratios = [s["generated_attn_ratio"] for s in summary]
+    img_ratios = [s["image_activation_ratio"] for s in summary]
+    prompt_ratios = [s["prompt_activation_ratio"] for s in summary]
+    gen_ratios = [s["generated_activation_ratio"] for s in summary]
 
     n = len(steps)
-    colors = [REGION_COLORS["image"], REGION_COLORS["prompt"], REGION_COLORS["generated"]]
+    colors = [
+        REGION_COLORS["image"], REGION_COLORS["prompt"],
+        REGION_COLORS["generated"],
+    ]
     labels = ["Image", "Prompt", "Prior Generated"]
 
     fig, ax = plt.subplots(figsize=(max(6, min(12, n * 1.5)), 4))
 
     if n >= 4:
-        # Stacked area chart for longer generations
         ax.stackplot(
-            range(n),
-            img_ratios, prompt_ratios, gen_ratios,
+            range(n), img_ratios, prompt_ratios, gen_ratios,
             labels=labels, colors=colors, alpha=0.8,
         )
         ax.set_xlim(0, n - 1)
         _add_token_xticks(ax, summary, max_ticks=40)
     else:
-        # Stacked bar chart for short generations (1-3 tokens)
         x = np.arange(n)
         bottom_prompt = np.array(img_ratios)
         bottom_gen = bottom_prompt + np.array(prompt_ratios)
@@ -574,21 +495,20 @@ def plot_attention_ratio_over_generation(
 
     ax.set_ylim(0, 1)
     ax.set_xlabel("Generation Step")
-    ax.set_ylabel("Attention Ratio")
-    ax.set_title(f"Attention Source Distribution Over Generation\n{title}")
+    ax.set_ylabel("Activation Ratio")
+    ax.set_title(f"Activation Source Distribution Over Generation\n{title}")
     ax.legend(loc="upper right", fontsize=8)
-
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
 
-def plot_entropy_over_generation(
+def plot_activation_entropy_over_generation(
     summary_instruct: Optional[List[Dict]] = None,
     summary_thinking: Optional[List[Dict]] = None,
     title: str = "",
     save_path: Optional[str] = None,
 ):
-    """Line chart of attention entropy per generated token for one or both models."""
+    """Line chart of activation entropy per generated token."""
     fig, ax = plt.subplots(figsize=(12, 4))
 
     if summary_instruct:
@@ -600,30 +520,26 @@ def plot_entropy_over_generation(
         steps = range(len(summary_thinking))
         ent = [s["entropy"] for s in summary_thinking]
         ax.plot(steps, ent, label="Thinking", color="#E74C3C", linewidth=1.2)
-
-        # Mark thinking phase
         _add_phase_markers(ax, summary_thinking)
 
     ax.set_xlabel("Generation Step")
-    ax.set_ylabel("Attention Entropy (nats)")
-    ax.set_title(f"Attention Entropy Over Generation\n{title}")
+    ax.set_ylabel("Activation Entropy (nats)")
+    ax.set_title(f"TAM Activation Entropy Over Generation\n{title}")
     ax.legend(fontsize=8)
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
 
-def plot_top_attended_tokens_heatmap(
+def plot_top_activated_tokens_heatmap(
     summary: List[Dict],
     token_regions: Optional[TokenRegions] = None,
     num_tokens: int = 50,
     title: str = "",
     save_path: Optional[str] = None,
 ):
-    """Sparse heatmap: for each generated token, show top-5 attended source tokens.
+    """Sparse heatmap of top-5 most activated source tokens per generated token.
 
-    Rows = generated tokens, columns = source token indices.
-    Zeros are set to NaN (white background) and each row is normalized by its
-    max so the color gradient shows relative importance within each token's top-5.
+    Each row is normalized by its max; zeros are set to NaN (white background).
     """
     if not summary:
         return
@@ -637,12 +553,9 @@ def plot_top_attended_tokens_heatmap(
             if idx < max_src:
                 heatmap[i, idx] = val
 
-    # Normalize each row by its max for relative importance
     row_maxes = heatmap.max(axis=1, keepdims=True)
     row_maxes[row_maxes == 0] = 1.0
     heatmap = heatmap / row_maxes
-
-    # Set zeros to NaN so they render as white background
     heatmap[heatmap == 0] = np.nan
 
     fig, ax = plt.subplots(figsize=(14, max(4, len(display) * 0.12)))
@@ -654,7 +567,6 @@ def plot_top_attended_tokens_heatmap(
     ax.set_xlabel("Source Token Index")
     ax.set_ylabel("Generated Token")
 
-    # Y-axis labels
     ytick_step = max(1, len(display) // 30)
     yticks = list(range(0, len(display), ytick_step))
     ax.set_yticks(yticks)
@@ -662,7 +574,6 @@ def plot_top_attended_tokens_heatmap(
         [f"{display[i]['token_str'][:8]}" for i in yticks], fontsize=6
     )
 
-    # Add region boundary lines if token_regions is provided
     if token_regions is not None:
         boundaries = [
             (token_regions.image_start, "image", "Img"),
@@ -673,15 +584,17 @@ def plot_top_attended_tokens_heatmap(
         for pos, region, label in boundaries:
             if pos < max_src:
                 color = REGION_COLORS.get(region, "#888888")
-                ax.axvline(x=pos, color=color, linestyle="--", alpha=0.6, linewidth=0.8)
+                ax.axvline(
+                    x=pos, color=color, linestyle="--", alpha=0.6, linewidth=0.8
+                )
                 if label:
                     ax.text(
                         pos + 1, 0.5, label, fontsize=6, color=color,
                         va="bottom", ha="left",
                     )
 
-    ax.set_title(f"Top-5 Attended Source Tokens (row-normalized)\n{title}")
-    fig.colorbar(im, ax=ax, shrink=0.6, label="Relative Attention (per row)")
+    ax.set_title(f"Top-5 Activated Source Tokens (row-normalized)\n{title}")
+    fig.colorbar(im, ax=ax, shrink=0.6, label="Relative Activation (per row)")
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
@@ -691,19 +604,18 @@ def plot_reasoning_phase_transition(
     title: str = "",
     save_path: Optional[str] = None,
 ):
-    """Attention ratios with phase boundaries for the Thinking model.
+    """Activation ratios with phase boundaries for the Thinking model.
 
-    Shows vertical lines at <think>/<\/think> transitions and plots
-    image/prompt/thinking/answer attention ratios.
+    4-component stacked area: image / prompt / thinking / answer.
     """
     if not summary_thinking:
         return
 
     steps = range(len(summary_thinking))
-    img_r = [s["image_attn_ratio"] for s in summary_thinking]
-    prompt_r = [s["prompt_attn_ratio"] for s in summary_thinking]
-    think_r = [s.get("thinking_attn_ratio", 0) for s in summary_thinking]
-    ans_r = [s.get("answer_attn_ratio", 0) for s in summary_thinking]
+    img_r = [s["image_activation_ratio"] for s in summary_thinking]
+    prompt_r = [s["prompt_activation_ratio"] for s in summary_thinking]
+    think_r = [s.get("thinking_activation_ratio", 0) for s in summary_thinking]
+    ans_r = [s.get("answer_activation_ratio", 0) for s in summary_thinking]
 
     fig, ax = plt.subplots(figsize=(14, 5))
     ax.stackplot(
@@ -718,218 +630,225 @@ def plot_reasoning_phase_transition(
 
     _add_phase_markers(ax, summary_thinking)
 
-    ax.set_xlim(0, len(steps) - 1)
+    ax.set_xlim(0, len(summary_thinking) - 1)
     ax.set_ylim(0, 1)
     ax.set_xlabel("Generation Step")
-    ax.set_ylabel("Attention Ratio")
-    ax.set_title(f"Reasoning Phase Attention Transition\n{title}")
+    ax.set_ylabel("Activation Ratio")
+    ax.set_title(f"Reasoning Phase Activation Transition\n{title}")
     ax.legend(loc="upper right", fontsize=8)
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
 
 # ======================================================================
-# COMPARATIVE AND STRUCTURAL PLOTS
+# STRUCTURAL AND COMPARATIVE PLOTS
 # ======================================================================
 
-def plot_attention_matrix(
-    attn: np.ndarray,
+def plot_activation_matrix(
+    result_raw_scores: List[List[np.ndarray]],
+    num_layers: int,
+    input_len: int,
+    num_generated: int,
     token_labels: Optional[List[str]] = None,
     token_regions: Optional[TokenRegions] = None,
     title: str = "",
     save_path: Optional[str] = None,
-    max_size: int = 200,
+    max_cols: int = 300,
+    max_rows: int = 100,
 ):
-    """Full causal (lower-triangular) attention heatmap.
+    """Compact activation matrix: rows = generated tokens, columns = all source positions.
+
+    Unlike the attention matrix (S x S for every token), TAM only produces
+    scores for generated tokens, so we show a compact (num_generated x S)
+    heatmap.  Each row is one generated token; each column is a source
+    position in the full sequence.  Columns beyond the causal horizon of
+    a given row are masked to NaN (white).
+
+    Region boundaries (image, prompt, generation start) are drawn as
+    vertical dashed lines on the x-axis.  For the y-axis, if the model
+    is a thinking model, a horizontal line marks the think/answer
+    transition.
 
     Args:
-        attn: (seq_len, seq_len) attention matrix.
-        token_labels: Labels for axes.
-        token_regions: TokenRegions for boundary indicators.
+        result_raw_scores: raw_scores from TAMResult.
+        num_layers: Number of layers.
+        input_len: Length of the input sequence.
+        num_generated: Number of generated tokens.
+        token_labels: Decoded token strings for axis labels.
+        token_regions: For drawing boundary lines.
         title: Plot title.
         save_path: Path to save.
-        max_size: Downsample if sequence is longer.
+        max_cols: Downsample columns if wider than this.
+        max_rows: Downsample rows if taller than this.
     """
-    S = attn.shape[0]
-    downsample_step = 1
-    if S > max_size:
-        downsample_step = S // max_size
-        attn = attn[::downsample_step, ::downsample_step]
-        if token_labels:
-            token_labels = token_labels[::downsample_step]
+    if num_generated == 0:
+        return
 
-    attn = attn.copy().astype(np.float64)
+    # Total source positions = input_len + num_generated - 1
+    # (the last generated token can see all prior positions)
+    S = input_len + num_generated
+    matrix = np.full((num_generated, S), np.nan)
 
-    # Mask upper triangle (causal mask zeros) as NaN so they render as
-    # white background and don't skew the color range.
-    S_disp = attn.shape[0]
-    mask = np.triu(np.ones((S_disp, S_disp), dtype=bool), k=1)
-    attn[mask] = np.nan
+    for gen_idx in range(num_generated):
+        layer_scores = [
+            result_raw_scores[gen_idx][l]
+            for l in range(num_layers)
+        ]
+        avg_scores = np.mean(layer_scores, axis=0)
+        score_len = min(len(avg_scores), S)
+        matrix[gen_idx, :score_len] = avg_scores[:score_len]
 
-    # Compute vmax from the 95th percentile of the lower-triangle values
-    # so that a few extreme self-attention peaks don't wash everything out.
-    lower_vals = attn[~mask]
-    lower_vals = lower_vals[~np.isnan(lower_vals)]
-    if len(lower_vals) > 0:
-        vmax = float(np.percentile(lower_vals, 95))
+    # Build label arrays before downsampling
+    gen_labels = None
+    src_labels = None
+    if token_labels:
+        gen_labels = token_labels[input_len:input_len + num_generated]
+        src_labels = token_labels[:S]
+
+    # Downsample columns if too wide
+    col_step = 1
+    if S > max_cols:
+        col_step = S // max_cols
+        matrix = matrix[:, ::col_step]
+        if src_labels:
+            src_labels = src_labels[::col_step]
+
+    # Downsample rows if too tall
+    row_step = 1
+    if num_generated > max_rows:
+        row_step = num_generated // max_rows
+        matrix = matrix[::row_step, :]
+        if gen_labels:
+            gen_labels = gen_labels[::row_step]
+
+    nrows_disp, ncols_disp = matrix.shape
+
+    # Compute color scale from 95th percentile of valid values
+    valid_vals = matrix[~np.isnan(matrix)]
+    if len(valid_vals) > 0:
+        vmax = float(np.percentile(valid_vals, 95))
         vmax = max(vmax, 1e-6)
     else:
         vmax = 1.0
 
-    fig, ax = plt.subplots(figsize=(10, 10))
+    # Figure size: wider than tall since there are many more source
+    # positions than generated tokens in typical runs
+    fig_w = max(8, min(16, ncols_disp * 0.06))
+    fig_h = max(4, min(12, nrows_disp * 0.12))
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    ax.set_facecolor("white")
+
     im = ax.imshow(
-        attn,
-        cmap="viridis",
-        aspect="auto",
+        matrix, cmap="viridis", aspect="auto",
         norm=PowerNorm(gamma=0.3, vmin=0, vmax=vmax),
+        interpolation="none",
     )
-    ax.set_title(f"Causal Attention Matrix\n{title}")
-    ax.set_xlabel("Key Position")
-    ax.set_ylabel("Query Position")
 
-    if token_labels and len(token_labels) <= 80:
-        short_labels = [_short(t, 6) for t in token_labels]
-        ax.set_xticks(range(len(short_labels)))
-        ax.set_xticklabels(short_labels, rotation=90, fontsize=4)
-        ax.set_yticks(range(len(short_labels)))
-        ax.set_yticklabels(short_labels, fontsize=4)
+    ax.set_title(f"TAM Activation Matrix (Generated \u2192 Source)\n{title}")
+    ax.set_xlabel("Source Position")
+    ax.set_ylabel("Generated Token")
 
-    # Add region boundary lines if token_regions is provided
+    # Y-axis: generated token labels
+    if gen_labels and nrows_disp <= 60:
+        yticks = list(range(nrows_disp))
+        ax.set_yticks(yticks)
+        ax.set_yticklabels(
+            [_short(g, 8) for g in gen_labels], fontsize=5,
+        )
+    else:
+        ytick_step = max(1, nrows_disp // 30)
+        yticks = list(range(0, nrows_disp, ytick_step))
+        ax.set_yticks(yticks)
+        if gen_labels:
+            ax.set_yticklabels(
+                [_short(gen_labels[i], 8) for i in yticks], fontsize=5,
+            )
+
+    # X-axis: source position labels (subsampled)
+    xtick_step = max(1, ncols_disp // 40)
+    xticks = list(range(0, ncols_disp, xtick_step))
+    ax.set_xticks(xticks)
+    if src_labels:
+        ax.set_xticklabels(
+            [_short(src_labels[i], 6) for i in xticks],
+            rotation=90, fontsize=4,
+        )
+
+    # Region boundary lines (vertical) on x-axis
     if token_regions is not None:
-        boundaries = [
-            (token_regions.image_start, "image"),
-            (token_regions.image_end, "image"),
-            (token_regions.prompt_start, "prompt"),
-            (token_regions.prompt_end, "prompt"),
-            (token_regions.generation_start, "generated"),
+        x_boundaries = [
+            (token_regions.image_start, "image", "Img"),
+            (token_regions.image_end, "image", None),
+            (token_regions.prompt_start, "prompt", "Prompt"),
+            (token_regions.generation_start, "generated", "Gen"),
         ]
-        for pos, region in boundaries:
-            scaled = pos / downsample_step
-            color = REGION_COLORS.get(region, "#888888")
-            ax.axhline(y=scaled, color=color, linestyle="--", alpha=0.5, linewidth=0.8)
-            ax.axvline(x=scaled, color=color, linestyle="--", alpha=0.5, linewidth=0.8)
+        for pos, region, label in x_boundaries:
+            x_scaled = pos / col_step
+            if 0 <= x_scaled < ncols_disp:
+                color = REGION_COLORS.get(region, "#888888")
+                ax.axvline(
+                    x=x_scaled, color=color, linestyle="--",
+                    alpha=0.7, linewidth=0.8,
+                )
+                if label:
+                    ax.text(
+                        x_scaled + 0.5, -0.5, label,
+                        fontsize=6, color=color, va="bottom", ha="left",
+                    )
 
-    fig.colorbar(im, ax=ax, shrink=0.6)
+        # Horizontal line at think/answer boundary (if thinking model)
+        if (token_regions.think_end is not None
+                and token_regions.answer_start is not None):
+            y_think = (token_regions.answer_start - input_len) / row_step
+            if 0 < y_think < nrows_disp:
+                ax.axhline(
+                    y=y_think, color=REGION_COLORS["thinking"],
+                    linestyle="--", alpha=0.7, linewidth=1,
+                )
+                ax.text(
+                    ncols_disp * 0.01, y_think - 0.5, "answer",
+                    fontsize=6, color=REGION_COLORS["answer"],
+                    va="top", ha="left",
+                )
+
+    fig.colorbar(im, ax=ax, shrink=0.6, label="TAM Score (layer-avg)")
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
 
-def plot_rollout_comparison(
-    rollout_instruct: Optional[np.ndarray],
-    rollout_thinking: Optional[np.ndarray],
-    image: np.ndarray,
-    vision_shape: Tuple[int, ...],
-    token_regions_instruct: Optional["TokenRegions"] = None,
-    token_regions_thinking: Optional["TokenRegions"] = None,
-    token_idx_instruct: Optional[int] = None,
-    token_idx_thinking: Optional[int] = None,
-    title: str = "",
-    save_path: Optional[str] = None,
-):
-    """Side-by-side rollout heatmaps on the same image."""
-    import cv2
-
-    num_panels = sum([rollout_instruct is not None, rollout_thinking is not None])
-    if num_panels == 0:
-        return
-
-    fig, axes = plt.subplots(1, num_panels + 1, figsize=(6 * (num_panels + 1), 5))
-    if num_panels + 1 == 1:
-        axes = [axes]
-
-    axes[0].imshow(image)
-    axes[0].set_title("Original")
-    axes[0].axis("off")
-
-    panel = 1
-    for rollout, regions, tok_idx, label in [
-        (rollout_instruct, token_regions_instruct, token_idx_instruct, "Instruct"),
-        (rollout_thinking, token_regions_thinking, token_idx_thinking, "Thinking"),
-    ]:
-        if rollout is None or regions is None:
-            continue
-
-        tidx = tok_idx if tok_idx is not None else len(rollout) - 1
-        row = rollout[tidx, :tidx + 1] if rollout.ndim == 2 else rollout
-
-        img_attn = row[regions.image_start:regions.image_end]
-        if len(vision_shape) == 2:
-            h_tok, w_tok = vision_shape
-        else:
-            _, h_tok, w_tok = vision_shape
-
-        expected = h_tok * w_tok
-        if len(img_attn) != expected:
-            img_attn = np.pad(img_attn, (0, max(0, expected - len(img_attn))))[:expected]
-
-        heatmap = img_attn.reshape(h_tok, w_tok)
-        img_h, img_w = image.shape[:2]
-        hm = cv2.resize(heatmap.astype(np.float32), (img_w, img_h))
-        hm_max = hm.max()
-        if hm_max > 0:
-            hm = hm / hm_max
-        hm_color = (plt.cm.jet(hm)[:, :, :3] * 255).astype(np.uint8)
-        overlay = (0.5 * image + 0.5 * hm_color).astype(np.uint8)
-
-        axes[panel].imshow(overlay)
-        axes[panel].set_title(f"{label} Rollout")
-        axes[panel].axis("off")
-        panel += 1
-
-    fig.suptitle(f"Attention Rollout Comparison\n{title}", fontsize=12)
-    fig.tight_layout()
-    _save_or_show(fig, save_path)
-
-
-def plot_entropy_by_layer(
+def plot_activation_entropy_by_layer(
     metrics_instruct: Optional[Dict] = None,
     metrics_thinking: Optional[Dict] = None,
     title: str = "",
     save_path: Optional[str] = None,
 ):
-    """Line plot of attention entropy across layers for both models."""
+    """Line plot of activation entropy across layers for one or both models."""
     fig, ax = plt.subplots(figsize=(10, 4))
 
     if metrics_instruct and "entropy_per_layer" in metrics_instruct:
         ent = metrics_instruct["entropy_per_layer"]
-        ax.plot(range(len(ent)), ent, "o-", label="Instruct",
-                color="#2196F3", markersize=3, linewidth=1.2)
+        ax.plot(
+            range(len(ent)), ent, "o-", label="Instruct",
+            color="#2196F3", markersize=3, linewidth=1.2,
+        )
 
     if metrics_thinking and "entropy_per_layer" in metrics_thinking:
         ent = metrics_thinking["entropy_per_layer"]
-        ax.plot(range(len(ent)), ent, "s-", label="Thinking",
-                color="#E74C3C", markersize=3, linewidth=1.2)
+        ax.plot(
+            range(len(ent)), ent, "s-", label="Thinking",
+            color="#E74C3C", markersize=3, linewidth=1.2,
+        )
 
     ax.set_xlabel("Layer")
-    ax.set_ylabel("Mean Attention Entropy (nats)")
-    ax.set_title(f"Attention Entropy by Layer\n{title}")
+    ax.set_ylabel("Mean Activation Entropy (nats)")
+    ax.set_title(f"TAM Activation Entropy by Layer\n{title}")
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     _save_or_show(fig, save_path)
 
 
-def plot_head_specialization(
-    metrics: Dict,
-    model_label: str = "",
-    save_path: Optional[str] = None,
-):
-    """Bar chart showing head specialization (std of image attention ratio)."""
-    if "head_specialization" not in metrics:
-        return
-
-    spec = metrics["head_specialization"]
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(range(len(spec)), spec, color="#4A90D9", alpha=0.8)
-    ax.set_xlabel("Head Index")
-    ax.set_ylabel("Specialization (std of image attn ratio)")
-    ax.set_title(f"Head Specialization ({model_label})")
-    ax.grid(True, alpha=0.3, axis="y")
-    fig.tight_layout()
-    _save_or_show(fig, save_path)
-
-
-def plot_image_attention_ratio_by_layer(
+def plot_image_activation_ratio_by_layer(
     metrics_instruct: Optional[Dict] = None,
     metrics_thinking: Optional[Dict] = None,
     title: str = "",
@@ -937,9 +856,9 @@ def plot_image_attention_ratio_by_layer(
     token_idx: Optional[int] = None,
     token_string: Optional[str] = None,
 ):
-    """Image vs text attention across layers (two-panel plot).
+    """Image vs text activation across layers (two-panel plot).
 
-    Left panel:  Line plot of mean image and text attention per layer.
+    Left panel:  Line plot of mean image and text activation per layer.
     Right panel: Stacked bar chart of relative contribution (image vs text)
                  at each layer.
 
@@ -956,13 +875,14 @@ def plot_image_attention_ratio_by_layer(
     COLOR_IMG_THINKING = "#f5a6a6"   # light red / pink
     COLOR_TXT_INSTRUCT = "#2471a3"   # dark blue
     COLOR_TXT_THINKING = "#aed6f1"   # light blue
+    key = "image_activation_ratio_per_layer"
 
     # Collect per-model data: list of (label, image_ratio_array)
     models = []
-    if metrics_instruct and "image_attn_ratio_per_layer" in metrics_instruct:
-        models.append(("Instruct", np.asarray(metrics_instruct["image_attn_ratio_per_layer"])))
-    if metrics_thinking and "image_attn_ratio_per_layer" in metrics_thinking:
-        models.append(("Thinking", np.asarray(metrics_thinking["image_attn_ratio_per_layer"])))
+    if metrics_instruct and key in metrics_instruct:
+        models.append(("Instruct", np.asarray(metrics_instruct[key])))
+    if metrics_thinking and key in metrics_thinking:
+        models.append(("Thinking", np.asarray(metrics_thinking[key])))
 
     if not models:
         return
@@ -973,7 +893,7 @@ def plot_image_attention_ratio_by_layer(
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
-    # ---- Left panel: mean attention line plot ----
+    # ---- Left panel: mean activation line plot ----
     line_styles = [("o-", 2), ("s--", 2)]
     for idx, (label, img_ratio) in enumerate(models):
         txt_ratio = 1.0 - img_ratio
@@ -988,14 +908,12 @@ def plot_image_attention_ratio_by_layer(
                  label=f"Text Tokens ({label})")
 
     ax1.set_xlabel("Layer", fontsize=12, fontweight="bold")
-    ax1.set_ylabel("Mean Attention", fontsize=12, fontweight="bold")
-    ax1.set_title("Mean Attention Across Layers", fontsize=12, fontweight="bold")
+    ax1.set_ylabel("Mean Activation", fontsize=12, fontweight="bold")
+    ax1.set_title("Mean Activation Across Layers", fontsize=12, fontweight="bold")
     ax1.legend(fontsize=9, frameon=True, edgecolor="black")
     ax1.grid(True, alpha=0.3)
 
     # ---- Right panel: stacked bar chart ----
-    # Use the first model's data for the stacked bar (single-model case)
-    # or instruct if both are present.
     bar_label, bar_img = models[0]
     bar_txt = 1.0 - bar_img
     layers = np.arange(1, len(bar_img) + 1)
@@ -1028,6 +946,76 @@ def plot_image_attention_ratio_by_layer(
     _save_or_show(fig, save_path)
 
 
+def plot_activation_image_comparison(
+    activation_img_instruct: Optional[np.ndarray],
+    activation_img_thinking: Optional[np.ndarray],
+    image: np.ndarray,
+    vision_shape: Tuple[int, ...],
+    title: str = "",
+    save_path: Optional[str] = None,
+):
+    """Side-by-side TAM image heatmaps for Instruct vs Thinking.
+
+    Replaces rollout_comparison from the attention pipeline since TAM
+    has no rollout concept.
+    """
+    import cv2
+
+    panels = []
+    labels_list = []
+
+    for act_img, label in [
+        (activation_img_instruct, "Instruct"),
+        (activation_img_thinking, "Thinking"),
+    ]:
+        if act_img is None:
+            continue
+
+        if len(vision_shape) == 2:
+            h_tok, w_tok = vision_shape
+        else:
+            _, h_tok, w_tok = vision_shape
+
+        expected = h_tok * w_tok
+        if len(act_img) != expected:
+            act_img = np.pad(
+                act_img, (0, max(0, expected - len(act_img)))
+            )[:expected]
+
+        heatmap = act_img.reshape(h_tok, w_tok)
+        img_h, img_w = image.shape[:2]
+        hm = cv2.resize(heatmap.astype(np.float32), (img_w, img_h))
+        hm_max = hm.max()
+        if hm_max > 0:
+            hm = hm / hm_max
+        hm_color = (plt.cm.jet(hm)[:, :, :3] * 255).astype(np.uint8)
+        overlay = (0.5 * image + 0.5 * hm_color).astype(np.uint8)
+
+        panels.append(overlay)
+        labels_list.append(label)
+
+    if not panels:
+        return
+
+    num_panels = len(panels) + 1
+    fig, axes = plt.subplots(1, num_panels, figsize=(6 * num_panels, 5))
+    if num_panels == 1:
+        axes = [axes]
+
+    axes[0].imshow(image)
+    axes[0].set_title("Original")
+    axes[0].axis("off")
+
+    for i, (panel, label) in enumerate(zip(panels, labels_list)):
+        axes[i + 1].imshow(panel)
+        axes[i + 1].set_title(f"{label} TAM")
+        axes[i + 1].axis("off")
+
+    fig.suptitle(f"TAM Activation Comparison\n{title}", fontsize=12)
+    fig.tight_layout()
+    _save_or_show(fig, save_path)
+
+
 # ======================================================================
 # HTML Report Generator
 # ======================================================================
@@ -1043,43 +1031,52 @@ def save_comparative_report(
     summary_instruct: Optional[List[Dict]] = None,
     summary_thinking: Optional[List[Dict]] = None,
 ):
-    """Generate an HTML report with all visualizations.
-
-    Assumes plots have already been saved as PNGs in output_dir.
-    This function creates an index.html that references them.
-    """
+    """Generate an HTML report embedding all TAM visualizations."""
     os.makedirs(output_dir, exist_ok=True)
-
-    # Find all PNG files in output_dir
-    png_files = sorted([
-        f for f in os.listdir(output_dir) if f.endswith(".png")
-    ])
 
     html_parts = [
         "<!DOCTYPE html>",
         "<html><head>",
         "<meta charset='utf-8'>",
-        "<title>Attention Analysis Report</title>",
+        "<title>TAM Analysis Report</title>",
         "<style>",
-        "body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }",
+        "body { font-family: Arial, sans-serif; max-width: 1200px; "
+        "margin: 0 auto; padding: 20px; }",
         "h1 { color: #333; }",
         "h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 5px; }",
         "img { max-width: 100%; border: 1px solid #eee; margin: 10px 0; }",
-        ".metrics { background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px 0; }",
+        ".metrics { background: #f5f5f5; padding: 15px; border-radius: 5px; "
+        "margin: 10px 0; }",
+        ".note { background: #fff3cd; padding: 10px; border-radius: 5px; "
+        "margin: 10px 0; font-size: 0.9em; }",
         "table { border-collapse: collapse; width: 100%; }",
         "td, th { border: 1px solid #ddd; padding: 8px; text-align: left; }",
         "th { background: #f0f0f0; }",
         "</style>",
         "</head><body>",
-        "<h1>Causal Attention Analysis Report</h1>",
+        "<h1>Token Activation Map (TAM) Analysis Report</h1>",
     ]
 
     if prompt:
         html_parts.append(f"<p><strong>Prompt:</strong> {prompt}</p>")
     if model_instruct_name:
-        html_parts.append(f"<p><strong>Instruct Model:</strong> {model_instruct_name}</p>")
+        html_parts.append(
+            f"<p><strong>Instruct Model:</strong> {model_instruct_name}</p>"
+        )
     if model_thinking_name:
-        html_parts.append(f"<p><strong>Thinking Model:</strong> {model_thinking_name}</p>")
+        html_parts.append(
+            f"<p><strong>Thinking Model:</strong> {model_thinking_name}</p>"
+        )
+
+    html_parts.append(
+        "<div class='note'>"
+        "<strong>Note:</strong> TAM (Token Activation Map) measures hidden-state "
+        "activations projected through lm_head, not attention weights. "
+        "Compared to the attention pipeline: (1) there is no head dimension, "
+        "(2) there is no attention rollout, and (3) scores are logit values "
+        "(clipped at 0) rather than probability distributions."
+        "</div>"
+    )
 
     # Metrics summary table
     if metrics_instruct or metrics_thinking:
@@ -1109,12 +1106,35 @@ def save_comparative_report(
 
         html_parts.append("</table></div>")
 
-    # Embed all plots
-    html_parts.append("<h2>Visualizations</h2>")
-    for png in png_files:
-        label = png.replace(".png", "").replace("_", " ").title()
-        html_parts.append(f"<h3>{label}</h3>")
-        html_parts.append(f"<img src='{png}' alt='{label}'>")
+    # Embed all plots by scanning subdirectories
+    for subdir_name in ["instruct", "thinking", "comparative"]:
+        subdir = os.path.join(output_dir, subdir_name)
+        if not os.path.isdir(subdir):
+            continue
+        png_files = sorted(
+            f for f in os.listdir(subdir) if f.endswith(".png")
+        )
+        if png_files:
+            html_parts.append(
+                f"<h2>{subdir_name.title()} Visualizations</h2>"
+            )
+            for png in png_files:
+                label = png.replace(".png", "").replace("_", " ").title()
+                rel_path = f"{subdir_name}/{png}"
+                html_parts.append(f"<h3>{label}</h3>")
+                html_parts.append(f"<img src='{rel_path}' alt='{label}'>")
+
+    # Also check for top-level PNGs
+    top_pngs = sorted(
+        f for f in os.listdir(output_dir)
+        if f.endswith(".png") and os.path.isfile(os.path.join(output_dir, f))
+    )
+    if top_pngs:
+        html_parts.append("<h2>Additional Plots</h2>")
+        for png in top_pngs:
+            label = png.replace(".png", "").replace("_", " ").title()
+            html_parts.append(f"<h3>{label}</h3>")
+            html_parts.append(f"<img src='{png}' alt='{label}'>")
 
     html_parts.extend(["</body></html>"])
 
@@ -1148,15 +1168,12 @@ def _fmt_metric(val) -> str:
     return str(val)
 
 
-def _collect_regions_from_token_regions(
+def _collect_regions(
     r: TokenRegions, max_idx: Optional[int] = None
 ) -> set:
-    """Determine which regions are present up to max_idx.
-
-    Returns a set of region name strings suitable for _add_region_legend.
-    """
+    """Determine which regions are present up to max_idx."""
     regions = set()
-    limit = max_idx + 1 if max_idx is not None else r.total_len
+    limit = max_idx if max_idx is not None else r.total_len
 
     if r.image_start < limit:
         regions.add("system")
@@ -1166,7 +1183,8 @@ def _collect_regions_from_token_regions(
         regions.add("prompt")
     if r.think_start is not None and r.think_start < limit:
         regions.add("thinking")
-    if r.think_end is not None and r.answer_start is not None and r.answer_start < limit:
+    if (r.think_end is not None and r.answer_start is not None
+            and r.answer_start < limit):
         regions.add("answer")
     elif r.generation_start < limit and r.think_start is None:
         regions.add("generated")
@@ -1175,13 +1193,7 @@ def _collect_regions_from_token_regions(
 
 
 def _add_region_legend(ax, regions_present: Optional[set] = None):
-    """Add a legend with region colors.
-
-    Args:
-        ax: Matplotlib axes.
-        regions_present: Set of region names that actually appear in the data.
-            If None, shows all non-system regions (legacy behavior).
-    """
+    """Add a legend with region colors."""
     from matplotlib.patches import Patch
     if regions_present is not None:
         handles = [
@@ -1195,17 +1207,14 @@ def _add_region_legend(ax, regions_present: Optional[set] = None):
             for k, c in REGION_COLORS.items()
             if k in ("image", "prompt", "thinking", "answer", "generated")
         ]
-    ax.legend(handles=handles, loc="upper right", fontsize=7, ncol=2)
+    if handles:
+        ax.legend(handles=handles, loc="upper right", fontsize=7, ncol=2)
 
 
 def _add_token_xticks(ax, summary: List[Dict], max_ticks: int = 40):
     """Add subsampled token labels to x-axis."""
     n = len(summary)
-    if n <= max_ticks:
-        step = 1
-    else:
-        step = n // max_ticks
-
+    step = max(1, n // max_ticks)
     ticks = list(range(0, n, step))
     labels = [_short(summary[i]["token_str"], 8) for i in ticks]
     ax.set_xticks(ticks)
@@ -1220,6 +1229,8 @@ def _add_phase_markers(ax, summary_thinking: List[Dict]):
         if prev_phase != phase and prev_phase is not None:
             color = REGION_COLORS.get(phase, "#888888")
             ax.axvline(x=i, color=color, linestyle="--", alpha=0.7, linewidth=1)
-            ax.text(i, ax.get_ylim()[1] * 0.95, f"  {phase}",
-                    fontsize=7, color=color, rotation=90, va="top")
+            ax.text(
+                i, ax.get_ylim()[1] * 0.95, f"  {phase}",
+                fontsize=7, color=color, rotation=90, va="top",
+            )
         prev_phase = phase

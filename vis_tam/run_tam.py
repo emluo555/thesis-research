@@ -141,13 +141,13 @@ def tam_demo_for_qwen3_vl(image_path, prompt_text, model_path, model_name, save_
 
         plot_activations_all_layers(
             all_scores = logit_scores_for_token,         # shape: num_layers × scores
-            path = '.',
+            path = os.path.join(save_dir, 'all_layer_plots'),
             model_name = model_name,
             target_token_idx = token_idx,
             target_token = token_text
         )
         append_tam_scores_csv(
-            save_dir = '.', 
+            save_dir = save_dir, 
             token_idx = token_idx, 
             token_text = token_text, 
             all_scores = logit_scores_for_token,

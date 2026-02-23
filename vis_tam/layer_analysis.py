@@ -114,7 +114,7 @@ def plot_activations_all_layers(all_scores, path, model_name, target_token_idx, 
     ax1.grid(True, alpha=0.3)
     ax1.set_xticks(layer_indices[::1])  # tick for every layer
     
-    # Plot 2: Stacked bar chart showing ratio at each layer
+    # Plot 2: Stacked bar chart showing ratio at each layer, Relative Avg Contribution
     img_rel_per_layer = []
     txt_rel_per_layer = []
     for i in range(num_layers):

@@ -1,3 +1,7 @@
 models/
 slrm_log/
 __pycache__/
+old_maps/
+sample_data/
+new_vis_results/
+attention_maps/

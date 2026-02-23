@@ -529,7 +529,7 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
     if isinstance(target_token, int):
         round_idx = target_token
         this_token_idx = -1 # last token of each answer round
-        vis_token_idx = len(prompt) + target_token - 1
+        vis_token_idx = len(prompt) + target_token - 2 #fix.. but like why...
 
     # for the first round, which contains multiple prompt tokens to explain
     else:

@@ -179,8 +179,12 @@ def run_analysis(
         """Return True if the plot *name* should be generated."""
         return enabled_plots is None or name in enabled_plots
 
-    model_dir = os.path.join(output_dir, model_label)
-    os.makedirs(model_dir, exist_ok=True)
+    any_plots = enabled_plots is None or len(enabled_plots) > 0
+    if any_plots:
+        model_dir = os.path.join(output_dir, model_label)
+        os.makedirs(model_dir, exist_ok=True)
+    else:
+        model_dir = None
 
     # Convert PIL image to numpy for visualization
     image_np = np.array(image)
@@ -426,7 +430,7 @@ def run_analysis(
     json_metrics["thinking_trace"] = json_metrics["thinking_trace"].strip()
     json_metrics["generated_answer"] = json_metrics["generated_answer"].strip()
 
-    if save_metrics_json:
+    if save_metrics_json and model_dir is not None:
         metrics_path = os.path.join(model_dir, "metrics.json")
         with open(metrics_path, "w") as f:
             json.dump(json_metrics, f, indent=2)

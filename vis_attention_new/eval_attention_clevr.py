@@ -19,6 +19,7 @@ Usage:
         --image_attn_ratio_by_layer
 """
 
+import csv
 import gc
 import os
 import json
@@ -77,7 +78,14 @@ ALL_PLOT_NAMES = [
 
 
 def build_enabled_plots(args):
-    """Return the set of enabled plot names, or None for all."""
+    """Return the set of enabled plot names, or None for all.
+
+    Returns ``set()`` (empty) when --no_plots is given, which disables all
+    plotting and directory creation.  Returns ``None`` when no individual
+    plot flags are given, meaning all plots are enabled.
+    """
+    if getattr(args, "no_plots", False):
+        return set()
     selected = {name for name in ALL_PLOT_NAMES if getattr(args, name, False)}
     return selected or None
 
@@ -93,12 +101,34 @@ def _flush_memory():
         torch.cuda.empty_cache()
 
 
-def _item_already_done(item_dir, model_label):
-    """Check if the output directory for this item+model already exists."""
+def _item_already_done(item_dir, model_label, no_plots=False,
+                       prev_keys=None):
+    """Check whether this item+model was already processed.
+
+    With plots: checks for .png files in *item_dir/model_label/*.
+    Without plots (--no_plots): checks if the item key is present in
+    *prev_keys* (loaded from a previous consolidated JSON).
+    """
+    if no_plots:
+        item_key = os.path.basename(item_dir)
+        return prev_keys is not None and item_key in prev_keys
     out_dir = os.path.join(item_dir, model_label)
     return os.path.isdir(out_dir) and any(
         f.endswith(".png") for f in os.listdir(out_dir)
     )
+
+
+def _load_previous_keys(save_dir, model_label):
+    """Load item keys from a previously written metrics JSON for resume."""
+    path = os.path.join(save_dir, f"metrics_{model_label}.json")
+    if not os.path.isfile(path):
+        return set()
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return {k for k, v in data.items() if "error" not in v}
+    except (json.JSONDecodeError, KeyError):
+        return set()
 
 
 # ------------------------------------------------------------------
@@ -109,12 +139,8 @@ def _build_item_record(item, prompt, json_metrics=None,
                        per_token_data=None, error=None):
     """Build a consolidated record for one dataset item.
 
-    Args:
-        item: Raw CLEVR dataset dict (has 'question', 'answer', etc.).
-        prompt: The full prompt sent to the model.
-        json_metrics: The json_metrics dict returned by run_analysis.
-        per_token_data: Dict from compute_per_token_attention_ratios.
-        error: Optional error message if the item failed.
+    Only per_answer_token_metrics goes into the JSON (small).
+    all_per_token_metrics is written to CSV separately for thinking models.
     """
     record = {
         "prompt": prompt,
@@ -126,11 +152,37 @@ def _build_item_record(item, prompt, json_metrics=None,
         record["generated_answer"] = json_metrics.get("generated_answer", "")
         record["thinking_trace"] = json_metrics.get("thinking_trace", "")
     if per_token_data is not None:
-        record["all_per_token_metrics"] = per_token_data["all_per_token_metrics"]
         record["per_answer_token_metrics"] = per_token_data["per_answer_token_metrics"]
     if error is not None:
         record["error"] = error
     return record
+
+
+def _per_token_to_csv_rows(item_key, per_token_data):
+    """Convert all_per_token_metrics into long-format CSV rows.
+
+    Yields tuples of (item, token_idx, token, layer,
+    image_attn, prompt_attn, reasoning_attn).
+    """
+    m = per_token_data["all_per_token_metrics"]
+    tokens = m["generated_tokens"]
+    image = m["image_attn_per_token"]
+    prompt = m["prompt_attn_per_token"]
+    reasoning = m["reasoning_attn_per_token"]
+    has_reasoning = len(reasoning) > 0
+
+    for t_idx, token_str in enumerate(tokens):
+        num_layers = len(image[t_idx])
+        for layer in range(num_layers):
+            yield (
+                item_key,
+                t_idx,
+                token_str,
+                layer,
+                f"{image[t_idx][layer]:.6f}",
+                f"{prompt[t_idx][layer]:.6f}",
+                f"{reasoning[t_idx][layer]:.6f}" if has_reasoning else "",
+            )
 
 
 # ------------------------------------------------------------------
@@ -194,6 +246,9 @@ def main():
                              help="Run only the Thinking model.")
 
     # ---- Per-plot toggle flags (same as demo_attention.py) ----
+    parser.add_argument("--no_plots", action="store_true",
+                        help="Disable all visualizations and per-item folders. "
+                             "Only metrics JSON and CSV are produced.")
     plot_group = parser.add_argument_group(
         "Plot toggles",
         "If NONE given, ALL plots are generated. If ANY given, ONLY those.",
@@ -243,8 +298,11 @@ def main():
         selected_layers = [int(x.strip()) for x in args.layers.split(",")]
         print(f"[Config] Selected layers: {selected_layers}")
 
+    no_plots = getattr(args, "no_plots", False)
     enabled_plots = build_enabled_plots(args)
-    if enabled_plots is not None:
+    if no_plots:
+        print("[Config] All plots disabled (--no_plots)")
+    elif enabled_plots is not None:
         print(f"[Config] Enabled plots: {sorted(enabled_plots)}")
     else:
         print("[Config] All plots enabled (no individual plot flags given)")
@@ -267,6 +325,7 @@ def main():
             args.model_instruct, args.local_files_only,
         )
 
+        prev_instruct = _load_previous_keys(args.save_dir, "instruct") if no_plots else None
         instruct_results = {}
         for idx, item in enumerate(tqdm.tqdm(data, desc="Instruct")):
             real_idx = data_start + idx
@@ -274,7 +333,8 @@ def main():
             item_dir = os.path.join(args.save_dir, item_key)
             prompt = args.prompt_template.format(question=item["question"])
 
-            if _item_already_done(item_dir, "instruct"):
+            if _item_already_done(item_dir, "instruct", no_plots=no_plots,
+                                  prev_keys=prev_instruct):
                 print(f"[Instruct] Skipping item {real_idx} (already processed)")
                 instruct_results[item_key] = _build_item_record(item, prompt)
                 continue
@@ -323,14 +383,24 @@ def main():
             args.model_thinking, args.local_files_only,
         )
 
+        prev_thinking = _load_previous_keys(args.save_dir, "thinking") if no_plots else None
         thinking_results = {}
+        csv_path = os.path.join(args.save_dir, "all_token_attn_thinking.csv")
+        csv_file = open(csv_path, "w", newline="")
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow([
+            "item", "token_idx", "token", "layer",
+            "image_attn", "prompt_attn", "reasoning_attn",
+        ])
+
         for idx, item in enumerate(tqdm.tqdm(data, desc="Thinking")):
             real_idx = data_start + idx
             item_key = f"item_{real_idx}"
             item_dir = os.path.join(args.save_dir, item_key)
             prompt = args.prompt_template.format(question=item["question"])
 
-            if _item_already_done(item_dir, "thinking"):
+            if _item_already_done(item_dir, "thinking", no_plots=no_plots,
+                                  prev_keys=prev_thinking):
                 print(f"[Thinking] Skipping item {real_idx} (already processed)")
                 thinking_results[item_key] = _build_item_record(item, prompt)
                 continue
@@ -357,6 +427,9 @@ def main():
                 thinking_results[item_key] = _build_item_record(
                     item, prompt, json_metrics, per_token_data,
                 )
+                csv_writer.writerows(
+                    _per_token_to_csv_rows(item_key, per_token_data)
+                )
             except Exception as exc:
                 print(f"[Thinking] ERROR on item {real_idx}: {exc}")
                 traceback.print_exc()
@@ -367,6 +440,9 @@ def main():
             finally:
                 del result, inputs, image, json_metrics, per_token_data
                 _flush_memory()
+
+        csv_file.close()
+        print(f"[Saved] {csv_path}")
 
         consolidated["thinking"] = thinking_results
 
