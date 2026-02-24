@@ -148,14 +148,19 @@ async def grade_all(
 # Per-mode processing
 # ------------------------------------------------------------------
 
-def process_mode(data: dict) -> tuple[list, list]:
-    """Split items into (to_grade, skipped).
+def process_mode(data: dict, detect_truncated: bool = False) -> tuple[list, list, list]:
+    """Split items into (to_grade, skipped, truncated).
 
-    to_grade: list of (item_key, correct_answer, generated_answer)
-    skipped:  list of item_key strings for items with empty generated_answer
+    to_grade:  list of (item_key, correct_answer, generated_answer)
+    skipped:   list of item_key strings for items with empty generated_answer
+    truncated: list of item_key strings where thinking_trace is empty but
+               generated_answer is non-empty (model ran out of tokens during
+               thinking and never produced a final answer). Only populated
+               when detect_truncated=True.
     """
     to_grade = []
     skipped = []
+    truncated = []
     for item_key, record in data.items():
         if isinstance(record, dict) and record.get("generated_answer", "") != "":
             to_grade.append((
@@ -163,15 +168,18 @@ def process_mode(data: dict) -> tuple[list, list]:
                 record.get("correct_answer", ""),
                 record["generated_answer"],
             ))
+            if detect_truncated and record.get("thinking_trace", "") == "":
+                truncated.append(item_key)
         else:
             skipped.append(item_key)
-    return to_grade, skipped
+    return to_grade, skipped, truncated
 
 
 def build_mode_block(
     data: dict,
     graded: dict[str, bool],
     skipped_keys: list[str],
+    truncated_keys: list[str] | None = None,
 ) -> dict:
     """Build the per-mode output block."""
     total = len(data)
@@ -185,7 +193,7 @@ def build_mode_block(
     accuracy = correct_count / evaluated if evaluated > 0 else 0.0
     incorrect_indices = sorted(extract_item_index(k) for k in incorrect_keys)
 
-    return {
+    block = {
         "total_items": total,
         "evaluated_items": evaluated,
         "skipped_items": skipped_indices,
@@ -194,6 +202,13 @@ def build_mode_block(
         "incorrect_count": incorrect_count,
         "incorrect_items": incorrect_indices,
     }
+
+    if truncated_keys is not None:
+        truncated_indices = sorted(extract_item_index(k) for k in truncated_keys)
+        block["truncated_thinking_items"] = truncated_indices
+        block["truncated_thinking_count"] = len(truncated_indices)
+
+    return block
 
 
 def build_comparison_block(
@@ -226,26 +241,40 @@ def build_comparison_block(
     }
 
 
+_ATTN_CATEGORIES = ("system", "image", "prompt", "generated")
+
 # ------------------------------------------------------------------
 # Attention analysis for individual items
 # ------------------------------------------------------------------
 
+_CSV_ATTN_COLS = [f"attn_{c}" for c in _ATTN_CATEGORIES]
+_CSV_TAM_COLS = [f"tam_{c}" for c in _ATTN_CATEGORIES]
+_CSV_ALL_COLS = _CSV_ATTN_COLS + _CSV_TAM_COLS
+
+
 def load_attention_csv(csv_path: str, item_index: int) -> dict:
-    """Load attention data for a single item from the thinking CSV.
+    """Load attention data for a single item from a token-level CSV.
 
     Returns a dict with keys:
-        tokens:         list[str]   - token string per generation step
-        image_attn:     list[float] - mean image_attn across layers per step
-        prompt_attn:    list[float] - mean prompt_attn across layers per step
-        reasoning_attn: list[float] - mean reasoning_attn across layers per step
+        tokens:        list[str]   – token string per generation step
+        attn_system:   list[float] – mean across layers per step
+        attn_image:    list[float]
+        attn_prompt:   list[float]
+        attn_generated:list[float]
+        tam_system:    list[float]
+        tam_image:     list[float]
+        tam_prompt:    list[float]
+        tam_generated: list[float]
     """
     item_key = f"item_{item_index}"
 
-    # Accumulate per-token-step sums and counts across layers
-    step_data: dict[int, dict] = defaultdict(
-        lambda: {"image": 0.0, "prompt": 0.0, "reasoning": 0.0,
-                 "count": 0, "token": ""}
-    )
+    def _make_step():
+        d = {"count": 0, "token": ""}
+        for c in _CSV_ALL_COLS:
+            d[c] = 0.0
+        return d
+
+    step_data: dict[int, dict] = defaultdict(_make_step)
 
     with open(csv_path, "r", newline="") as f:
         reader = csv.DictReader(f)
@@ -255,55 +284,53 @@ def load_attention_csv(csv_path: str, item_index: int) -> dict:
             t_idx = int(row["token_idx"])
             d = step_data[t_idx]
             d["token"] = row["token"]
-            d["image"] += float(row["image_attn"]) if row["image_attn"] else 0.0
-            d["prompt"] += float(row["prompt_attn"]) if row["prompt_attn"] else 0.0
-            d["reasoning"] += float(row["reasoning_attn"]) if row["reasoning_attn"] else 0.0
+            for col in _CSV_ALL_COLS:
+                d[col] += float(row[col]) if row.get(col) else 0.0
             d["count"] += 1
 
     if not step_data:
         raise ValueError(f"No data found for {item_key} in {csv_path}")
 
     sorted_steps = sorted(step_data.keys())
-    tokens = [step_data[s]["token"] for s in sorted_steps]
-    image_attn = [step_data[s]["image"] / step_data[s]["count"] for s in sorted_steps]
-    prompt_attn = [step_data[s]["prompt"] / step_data[s]["count"] for s in sorted_steps]
-    reasoning_attn = [step_data[s]["reasoning"] / step_data[s]["count"] for s in sorted_steps]
-
-    return {
-        "tokens": tokens,
-        "image_attn": image_attn,
-        "prompt_attn": prompt_attn,
-        "reasoning_attn": reasoning_attn,
-    }
+    result: dict = {"tokens": [step_data[s]["token"] for s in sorted_steps]}
+    for col in _CSV_ALL_COLS:
+        result[col] = [step_data[s][col] / step_data[s]["count"] for s in sorted_steps]
+    return result
 
 
 def summarize_attention(attn_data: dict) -> dict:
     """Compute overall averages across all generation steps."""
-    n = len(attn_data["image_attn"])
-    return {
-        "num_tokens": n,
-        "mean_image_attn": sum(attn_data["image_attn"]) / n if n else 0.0,
-        "mean_prompt_attn": sum(attn_data["prompt_attn"]) / n if n else 0.0,
-        "mean_reasoning_attn": sum(attn_data["reasoning_attn"]) / n if n else 0.0,
-    }
+    n = len(attn_data["attn_image"])
+    summary: dict = {"num_tokens": n}
+    for col in _CSV_ALL_COLS:
+        summary[f"mean_{col}"] = sum(attn_data[col]) / n if n else 0.0
+    return summary
 
 
 def plot_attention_over_generation(attn_data: dict, item_index: int,
                                    save_path: str | None = None):
-    """Plot image, prompt, and reasoning attention across generation steps."""
+    """Plot attention and TAM across generation steps (two subplots)."""
     import matplotlib.pyplot as plt
 
-    steps = list(range(len(attn_data["image_attn"])))
+    steps = list(range(len(attn_data["attn_image"])))
 
-    fig, ax = plt.subplots(figsize=(14, 5))
-    ax.plot(steps, attn_data["image_attn"], label="Image Attention", linewidth=1.2)
-    ax.plot(steps, attn_data["prompt_attn"], label="Prompt Attention", linewidth=1.2)
+    fig, (ax_attn, ax_tam) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
-    ax.set_xlabel("Generation Step (token index)")
-    ax.set_ylabel("Mean Attention (averaged across layers)")
-    ax.set_title(f"Attention Over Generation — item_{item_index}")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+    for cat in _ATTN_CATEGORIES:
+        ax_attn.plot(steps, attn_data[f"attn_{cat}"], label=cat.title(), linewidth=1.2)
+    ax_attn.set_ylabel("Raw Attention (mean across layers)")
+    ax_attn.set_title(f"Attention Over Generation — item_{item_index}")
+    ax_attn.legend()
+    ax_attn.grid(True, alpha=0.3)
+
+    for cat in _ATTN_CATEGORIES:
+        ax_tam.plot(steps, attn_data[f"tam_{cat}"], label=cat.title(), linewidth=1.2)
+    ax_tam.set_xlabel("Generation Step (token index)")
+    ax_tam.set_ylabel("TAM (mean across layers)")
+    ax_tam.set_title(f"TAM Over Generation — item_{item_index}")
+    ax_tam.legend()
+    ax_tam.grid(True, alpha=0.3)
+
     fig.tight_layout()
 
     if save_path:
@@ -324,9 +351,8 @@ def analyze_item_attention(csv_path: str, item_index: int,
     attn_data = load_attention_csv(csv_path, item_index)
     summary = summarize_attention(attn_data)
     print(f"[item_{item_index}] {summary['num_tokens']} generation steps")
-    print(f"  mean image_attn:     {summary['mean_image_attn']:.6f}")
-    print(f"  mean prompt_attn:    {summary['mean_prompt_attn']:.6f}")
-    print(f"  mean reasoning_attn: {summary['mean_reasoning_attn']:.6f}")
+    for col in _CSV_ALL_COLS:
+        print(f"  mean {col:20s}: {summary[f'mean_{col}']:.6f}")
     plot_attention_over_generation(attn_data, item_index, save_path=save_path)
     return summary
 
@@ -335,29 +361,38 @@ def analyze_item_attention(csv_path: str, item_index: int,
 # Incorrect-item attention report
 # ------------------------------------------------------------------
 
-def _mean_attn_from_json(record: dict) -> tuple[float, float] | None:
-    """Extract mean image and prompt attention from per_answer_token_metrics.
+
+def _mean_attn_from_json(record: dict) -> dict | None:
+    """Extract mean attention values from the attention and tam blocks.
 
     Averages across all answer tokens and all layers.
-    Returns (mean_image, mean_prompt) or None if data is missing.
+    Returns a dict with keys like ``attn_system``, ``attn_image``, …,
+    ``tam_system``, ``tam_image``, …  or None if no attention data exists.
     """
-    pat = record.get("per_answer_token_metrics")
-    if not pat:
-        return None
-    image_rows = pat.get("image_attn_per_ans_token", [])
-    prompt_rows = pat.get("prompt_attn_per_ans_token", [])
-    if not image_rows or not prompt_rows:
-        return None
+    result: dict[str, float] = {}
 
-    flat_image = [v for row in image_rows for v in row]
-    flat_prompt = [v for row in prompt_rows for v in row]
-    if not flat_image:
-        return None
+    for block_key, col_suffix in [("attention", "attn"), ("tam", "tam")]:
+        block = record.get(block_key)
+        if not block:
+            continue
+        for cat in _ATTN_CATEGORIES:
+            field = f"{cat}_{col_suffix}_per_ans_token"
+            rows = block.get(field, [])
+            flat = [v for row in rows for v in row]
+            result[f"{col_suffix}_{cat}"] = sum(flat) / len(flat) if flat else 0.0
 
-    return (
-        sum(flat_image) / len(flat_image),
-        sum(flat_prompt) / len(flat_prompt),
-    )
+    return result if result else None
+
+
+def _image_ratio(vals: dict, prefix: str) -> float:
+    """Compute image / (system + image + prompt + generated) for a given prefix."""
+    total = sum(vals.get(f"{prefix}_{c}", 0.0) for c in _ATTN_CATEGORIES)
+    return vals.get(f"{prefix}_image", 0.0) / total if total > 0 else 0.0
+
+
+_REPORT_ATTN_COLS = [f"attn_{c}" for c in _ATTN_CATEGORIES]
+_REPORT_TAM_COLS = [f"tam_{c}" for c in _ATTN_CATEGORIES]
+_REPORT_DETAIL_COLS = _REPORT_ATTN_COLS + ["attn_image_ratio"] + _REPORT_TAM_COLS + ["tam_image_ratio"]
 
 
 def generate_incorrect_attention_csv(
@@ -368,8 +403,9 @@ def generate_incorrect_attention_csv(
 ) -> None:
     """Build a CSV of attention stats for every incorrect item per mode.
 
-    Columns: item_index, mode, mean_image_attn, mean_text_attn, image_attn_ratio
-    Followed by aggregate summary rows at the bottom.
+    Per-item columns cover all four attention categories (system, image,
+    prompt, generated) for both raw attention and TAM, plus image ratios.
+    Aggregate summary rows are appended at the bottom.
     """
     with open(correctness_path, "r") as f:
         correctness = json.load(f)
@@ -391,8 +427,7 @@ def generate_incorrect_attention_csv(
             print(f"[{mode}] No incorrect items.")
             continue
 
-        image_all = []
-        prompt_all = []
+        accum: dict[str, list[float]] = defaultdict(list)
 
         for idx in sorted(incorrect_indices):
             item_key = f"item_{idx}"
@@ -401,50 +436,54 @@ def generate_incorrect_attention_csv(
                 print(f"[{mode}] Warning: {item_key} not found in metrics JSON, skipping.")
                 continue
 
-            result = _mean_attn_from_json(record)
-            if result is None:
+            vals = _mean_attn_from_json(record)
+            if vals is None:
                 print(f"[{mode}] Warning: {item_key} has no attention data, skipping.")
                 continue
 
-            mean_image, mean_prompt = result
-            total = mean_image + mean_prompt
-            ratio = mean_image / total if total > 0 else 0.0
+            attn_ratio = _image_ratio(vals, "attn")
+            tam_ratio = _image_ratio(vals, "tam")
 
-            rows.append([idx, mode, f"{mean_image:.6f}", f"{mean_prompt:.6f}", f"{ratio:.6f}"])
-            image_all.append(mean_image)
-            prompt_all.append(mean_prompt)
+            row = [idx, mode]
+            for col in _REPORT_ATTN_COLS:
+                row.append(f"{vals.get(col, 0.0):.6f}")
+            row.append(f"{attn_ratio:.6f}")
+            for col in _REPORT_TAM_COLS:
+                row.append(f"{vals.get(col, 0.0):.6f}")
+            row.append(f"{tam_ratio:.6f}")
+            rows.append(row)
 
-        if image_all:
-            agg_image = sum(image_all) / len(image_all)
-            agg_prompt = sum(prompt_all) / len(prompt_all)
-            agg_total = agg_image + agg_prompt
-            agg_ratio = agg_image / agg_total if agg_total > 0 else 0.0
-            mode_aggregates[mode] = {
-                "count": len(image_all),
-                "mean_image": agg_image,
-                "mean_prompt": agg_prompt,
-                "ratio": agg_ratio,
+            for k, v in vals.items():
+                accum[k].append(v)
+
+        if accum:
+            agg: dict[str, float] = {
+                k: sum(vs) / len(vs) for k, vs in accum.items()
             }
+            agg["attn_image_ratio"] = _image_ratio(agg, "attn")
+            agg["tam_image_ratio"] = _image_ratio(agg, "tam")
+            mode_aggregates[mode] = {"count": len(accum[next(iter(accum))]), **agg}
 
     os.makedirs(os.path.dirname(os.path.abspath(output_csv_path)), exist_ok=True)
     with open(output_csv_path, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["item_index", "mode", "mean_image_attn", "mean_text_attn",
-                         "image_attn_ratio"])
+        writer.writerow(["item_index", "mode"] + _REPORT_DETAIL_COLS)
         writer.writerows(rows)
 
         writer.writerow([])
-        writer.writerow(["# Aggregate image_attn_ratio for all incorrect items per mode"])
-        writer.writerow(["mode", "num_incorrect", "mean_image_attn", "mean_text_attn",
-                         "image_attn_ratio"])
+        writer.writerow(["# Aggregate attention stats for all incorrect items per mode"])
+        writer.writerow(["mode", "num_incorrect"] + _REPORT_DETAIL_COLS)
         for mode, agg in mode_aggregates.items():
-            writer.writerow([mode, agg["count"], f"{agg['mean_image']:.6f}",
-                             f"{agg['mean_prompt']:.6f}", f"{agg['ratio']:.6f}"])
+            agg_row = [mode, agg["count"]]
+            for col in _REPORT_DETAIL_COLS:
+                agg_row.append(f"{agg.get(col, 0.0):.6f}")
+            writer.writerow(agg_row)
 
     print(f"[Saved] {output_csv_path}")
     for mode, agg in mode_aggregates.items():
-        print(f"  {mode}: {agg['count']} incorrect items, "
-              f"image_attn_ratio={agg['ratio']:.4f}")
+        print(f"  {mode}: {int(agg['count'])} incorrect items, "
+              f"attn_image_ratio={agg['attn_image_ratio']:.4f}, "
+              f"tam_image_ratio={agg['tam_image_ratio']:.4f}")
 
 
 # ------------------------------------------------------------------
@@ -469,7 +508,7 @@ async def main_async(args: argparse.Namespace) -> None:
     if args.instruct_path:
         print(f"[Instruct] Loading {args.instruct_path}")
         instruct_data = load_metrics(args.instruct_path, args.data_range)
-        to_grade, skipped = process_mode(instruct_data)
+        to_grade, skipped, _ = process_mode(instruct_data)
         print(f"[Instruct] {len(to_grade)} to grade, {len(skipped)} skipped (empty answer)")
         instruct_graded = await grade_all(client, to_grade, args.model, args.concurrency)
         output["instruct"] = build_mode_block(instruct_data, instruct_graded, skipped)
@@ -480,10 +519,13 @@ async def main_async(args: argparse.Namespace) -> None:
     if args.thinking_path:
         print(f"[Thinking] Loading {args.thinking_path}")
         thinking_data = load_metrics(args.thinking_path, args.data_range)
-        to_grade, skipped = process_mode(thinking_data)
-        print(f"[Thinking] {len(to_grade)} to grade, {len(skipped)} skipped (empty answer)")
+        to_grade, skipped, truncated = process_mode(thinking_data, detect_truncated=True)
+        print(f"[Thinking] {len(to_grade)} to grade, {len(skipped)} skipped (empty answer), "
+              f"{len(truncated)} truncated (no answer produced)")
         thinking_graded = await grade_all(client, to_grade, args.model, args.concurrency)
-        output["thinking"] = build_mode_block(thinking_data, thinking_graded, skipped)
+        output["thinking"] = build_mode_block(
+            thinking_data, thinking_graded, skipped, truncated_keys=truncated,
+        )
         acc = output["thinking"]["accuracy"]
         print(f"[Thinking] Accuracy: {acc:.2%}  "
               f"({output['thinking']['correct_count']}/{output['thinking']['evaluated_items']})\n")
@@ -509,14 +551,37 @@ async def main_async(args: argparse.Namespace) -> None:
     for mode in ("instruct", "thinking"):
         if mode in output:
             b = output[mode]
-            print(f"  {mode:10s}  accuracy={b['accuracy']:.2%}  "
-                  f"correct={b['correct_count']}  incorrect={b['incorrect_count']}  "
-                  f"skipped={len(b['skipped_items'])}")
+            line = (f"  {mode:10s}  accuracy={b['accuracy']:.2%}  "
+                    f"correct={b['correct_count']}  incorrect={b['incorrect_count']}  "
+                    f"skipped={len(b['skipped_items'])}")
+            if "truncated_thinking_count" in b:
+                line += f"  truncated={b['truncated_thinking_count']}"
+            print(line)
     if "comparison" in output:
         c = output["comparison"]
         print(f"\n  Both incorrect:            {len(c['both_incorrect_items'])}")
         print(f"  Instruct only incorrect:   {len(c['instruct_only_incorrect_items'])}")
         print(f"  Thinking only incorrect:   {len(c['thinking_only_incorrect_items'])}")
+
+    # Auto-generate incorrect-item attention report
+    has_incorrect = any(
+        output.get(m, {}).get("incorrect_count", 0) > 0
+        for m in ("instruct", "thinking")
+    )
+    if has_incorrect and (args.instruct_path or args.thinking_path):
+        report_csv = os.path.join(
+            os.path.dirname(os.path.abspath(out_path)), "incorrect_attention.csv",
+        )
+        print(f"\n[Report] Auto-generating incorrect-item attention CSV...")
+        try:
+            generate_incorrect_attention_csv(
+                correctness_path=out_path,
+                instruct_metrics_path=args.instruct_path,
+                thinking_metrics_path=args.thinking_path,
+                output_csv_path=report_csv,
+            )
+        except Exception as exc:
+            print(f"[Report] Warning: could not generate attention report: {exc}")
 
 
 def main() -> None:
