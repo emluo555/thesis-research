@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LVLM Attention & TAM Explorer</title>
+<title>DriVQA Visualization</title>
 <style>
   :root {
     --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -96,13 +96,56 @@
   .expected-row strong { color: var(--color-text-primary); font-weight: 500; }
 
   .main-content {
-    display: grid;
-    grid-template-columns: 380px minmax(0, 1fr);
-    gap: 16px;
+    display: flex;
+    gap: 0;
   }
 
-  .left-col { display: flex; flex-direction: column; gap: 12px; }
+  .left-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .right-col { display: flex; flex-direction: column; gap: 0; min-width: 0; }
 
+  /* ── Column drag handle ── */
+  .col-resizer {
+    width: 16px;
+    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+  .col-resizer::after {
+    content: '';
+    width: 3px; height: 32px;
+    border-radius: 2px;
+    background: var(--color-border-tertiary);
+    transition: background 0.15s;
+  }
+  .col-resizer:hover::after, .col-resizer.dragging::after {
+    background: var(--color-border-secondary);
+  }
+
+  /* ── Row drag handle (vertical) ── */
+  .row-resizer {
+    height: 12px;
+    cursor: row-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .row-resizer::after {
+    content: '';
+    width: 32px; height: 3px;
+    border-radius: 2px;
+    background: var(--color-border-tertiary);
+    transition: background 0.15s;
+  }
+  .row-resizer:hover::after, .row-resizer.dragging::after {
+    background: var(--color-border-secondary);
+  }
+
+  /* ── Collapsible card/section ── */
   .overlay-card {
     border: 0.5px solid var(--color-border-tertiary);
     border-radius: var(--border-radius-lg);
@@ -121,6 +164,42 @@
   .dot-human { background: #639922; }
   .dot-attn { background: #E24B4A; }
   .dot-tam { background: #378ADD; }
+  .dot-dino { background: #9B59B6; }
+
+  .card-norm-toggle {
+    margin-left: auto;
+    display: flex; background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 4px; overflow: hidden;
+  }
+  .card-norm-toggle button {
+    padding: 2px 6px; font-size: 9px; font-weight: 500; cursor: pointer;
+    border: none; background: transparent; color: var(--color-text-tertiary);
+    transition: all 0.15s;
+  }
+  .card-norm-toggle button.active {
+    background: var(--color-text-secondary); color: var(--color-background-primary);
+  }
+
+  .collapse-toggle {
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--color-text-tertiary);
+    user-select: none;
+    transition: transform 0.2s;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+  .collapse-toggle:hover { color: var(--color-text-secondary); }
+  .collapse-toggle.collapsed { transform: rotate(-90deg); }
+  .collapsible-content {
+    transition: max-height 0.25s ease, opacity 0.2s ease;
+    overflow: hidden;
+  }
+  .collapsible-content.collapsed {
+    max-height: 0 !important;
+    opacity: 0;
+  }
 
   .img-wrap {
     position: relative; width: 100%; aspect-ratio: 16/9;
@@ -140,8 +219,6 @@
     font-size: 12px; color: var(--color-text-tertiary);
   }
 
-  .right-col { display: flex; flex-direction: column; gap: 12px; }
-
   .token-section {
     border: 0.5px solid var(--color-border-tertiary);
     border-radius: var(--border-radius-lg);
@@ -149,11 +226,30 @@
     padding: 14px 16px;
     max-height: 50vh;
     overflow-y: auto;
+    min-height: 80px;
   }
   .section-label {
     font-size: 11px; font-weight: 500; text-transform: uppercase;
     letter-spacing: 0.05em; color: var(--color-text-tertiary);
     margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .correctness-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  .correctness-badge.correct {
+    background: #d4edda; color: #155724;
+  }
+  .correctness-badge.incorrect {
+    background: #f8d7da; color: #721c24;
+  }
+  @media (prefers-color-scheme: dark) {
+    .correctness-badge.correct { background: #1a3a1a; color: #7bc67b; }
+    .correctness-badge.incorrect { background: #3a1a1a; color: #e87777; }
   }
 
   .token-flow {
@@ -209,8 +305,8 @@
     border-radius: var(--border-radius-lg);
     background: var(--color-background-primary);
     padding: 14px 16px;
-    flex: 1; min-height: 200px;
-    overflow-y: auto; max-height: 600px;
+    min-height: 120px;
+    overflow-y: auto;
   }
   .bar-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -223,32 +319,59 @@
   .legend-item { display: flex; align-items: center; gap: 4px; }
   .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
 
-  .norm-toggle {
+  .topk-toggle {
     display: flex; background: var(--color-background-secondary);
     border: 0.5px solid var(--color-border-tertiary);
     border-radius: var(--border-radius-md); overflow: hidden;
   }
-  .norm-toggle button {
+  .topk-toggle button {
     padding: 3px 8px; font-size: 10px; font-weight: 500; cursor: pointer;
     border: none; background: transparent; color: var(--color-text-tertiary);
     transition: all 0.15s;
   }
-  .norm-toggle button.active {
+  .topk-toggle button.active {
     background: var(--color-text-secondary); color: var(--color-background-primary);
   }
 
   .bar-chart { display: flex; flex-direction: column; gap: 4px; }
-  .bar-row {
+
+  /* Dual-column layout for independent attn / TAM top-K lists */
+  .dual-cols {
     display: grid;
-    grid-template-columns: 90px 1fr 1fr;
-    gap: 6px; align-items: center;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .dual-col-header {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 4px 0 6px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .dual-col-header .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+  .single-list { display: flex; flex-direction: column; gap: 3px; }
+
+  /* Attn row: label | bar  (left-aligned label) */
+  .sbar-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 5px; align-items: center;
     font-size: 12px;
   }
-  .bar-label {
-    text-align: right; overflow: hidden; text-overflow: ellipsis;
+  .sbar-label {
+    overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; color: var(--color-text-secondary);
     font-size: 11px;
   }
+  .sbar-label.left { text-align: right; }
+  .sbar-label.right { text-align: left; }
+
+  /* TAM row: bar | label  (right-aligned label) */
+  .sbar-row-r {
+    display: grid;
+    grid-template-columns: 1fr 90px;
+    gap: 5px; align-items: center;
+    font-size: 12px;
+  }
+
   .bar-track {
     height: 14px; border-radius: 3px;
     background: var(--color-background-secondary);
@@ -260,27 +383,18 @@
   }
   .bar-fill.attn { background: #E24B4A; opacity: 0.75; }
   .bar-fill.tam { background: #378ADD; opacity: 0.75; }
-
-  .bar-row.image-agg .bar-label {
-    font-weight: 500; color: var(--color-text-primary);
-    font-size: 12px;
-    display: flex; align-items: center; gap: 4px;
-    justify-content: flex-end;
-  }
-  .bar-row.image-agg .bar-label .img-icon {
-    width: 14px; height: 14px; border-radius: 3px;
-    background: var(--color-background-secondary);
-    border: 0.5px solid var(--color-border-tertiary);
+  .bar-pct {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 9px; color: var(--color-text-tertiary);
-    flex-shrink: 0;
+    font-size: 9px; font-weight: 600; color: var(--color-text-primary);
+    pointer-events: none;
   }
+
   .bar-divider {
     height: 1px; background: var(--color-border-tertiary);
     margin: 6px 0;
   }
   .bar-phase-label {
-    grid-column: 1 / -1;
     font-size: 10px; font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.05em; padding: 4px 0 2px;
   }
@@ -302,8 +416,43 @@
     padding: 40px; color: var(--color-text-tertiary); font-size: 13px;
   }
 
+  /* Ratio bar styling */
+  .ratio-row {
+    display: grid;
+    grid-template-columns: 90px 1fr 1fr;
+    gap: 6px; align-items: center;
+    font-size: 12px;
+  }
+  .ratio-row .bar-label {
+    font-weight: 500; color: var(--color-text-primary); font-size: 12px;
+    display: flex; align-items: center; gap: 4px; justify-content: flex-end;
+  }
+  .ratio-track {
+    height: 16px; border-radius: 3px;
+    background: var(--color-background-secondary);
+    position: relative; overflow: hidden;
+    display: flex;
+  }
+  .ratio-fill-img {
+    height: 100%; transition: width 0.3s ease;
+  }
+  .ratio-fill-img.attn { background: #E24B4A; opacity: 0.65; }
+  .ratio-fill-img.tam { background: #378ADD; opacity: 0.65; }
+  .ratio-fill-text {
+    height: 100%; transition: width 0.3s ease;
+  }
+  .ratio-fill-text.attn { background: #E24B4A; opacity: 0.25; }
+  .ratio-fill-text.tam { background: #378ADD; opacity: 0.25; }
+  .ratio-label-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 600; color: var(--color-text-primary);
+    pointer-events: none;
+  }
+
   @media (max-width: 760px) {
-    .main-content { grid-template-columns: 1fr; }
+    .main-content { flex-direction: column; }
+    .col-resizer { display: none; }
   }
 </style>
 </head>
@@ -321,51 +470,107 @@
   </div>
 </div>
 
-<div class="expected-row">
-  <strong>Expected:</strong> <span id="expected-text">...</span>
+<div class="expected-row" style="display:flex;align-items:center;justify-content:space-between;">
+  <div><strong>Expected:</strong> <span id="expected-text">...</span></div>
+  <div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+    <span style="color:var(--color-text-tertiary);font-weight:500;">Layer:</span>
+    <select id="layer-select" onchange="switchLayer(this.value)" style="font-size:12px;padding:3px 8px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);color:var(--color-text-primary);">
+      <option value="all">All (avg)</option>
+    </select>
+  </div>
 </div>
 
-<div class="main-content">
-  <div class="left-col">
-    <div class="overlay-card">
-      <div class="card-label"><div class="dot dot-human"></div> Human attention heatmap</div>
-      <div class="img-wrap">
-        <img id="img-human" src="" alt="">
-        <canvas id="canvas-human"></canvas>
+<div class="main-content" id="main-content">
+  <div class="left-col" id="left-col" style="width: 380px; flex-shrink: 0;">
+    <div class="overlay-card" id="card-human">
+      <div class="card-label">
+        <div class="dot dot-human"></div> Human attention heatmap
+        <span class="collapse-toggle" onclick="toggleCollapse('card-human')" title="Toggle visibility">&#9660;</span>
+      </div>
+      <div class="collapsible-content" id="card-human-body">
+        <div class="img-wrap">
+          <img id="img-human" src="" alt="">
+          <canvas id="canvas-human"></canvas>
+        </div>
       </div>
     </div>
-    <div class="overlay-card">
-      <div class="card-label"><div class="dot dot-attn"></div> Attention overlay</div>
-      <div class="img-wrap">
-        <img id="img-attn" src="" alt="">
-        <canvas id="canvas-attn"></canvas>
+    <div class="overlay-card" id="card-attn">
+      <div class="card-label">
+        <div class="dot dot-attn"></div> Attention overlay
+        <div class="card-norm-toggle" id="norm-toggle-attn">
+          <button class="active" onclick="switchNormMode('attn','relative')">Rel</button>
+          <button onclick="switchNormMode('attn','sqrt')">Sqrt</button>
+          <button onclick="switchNormMode('attn','clamp')">2-98%</button>
+        </div>
+        <span class="collapse-toggle" onclick="toggleCollapse('card-attn')" title="Toggle visibility">&#9660;</span>
+      </div>
+      <div class="collapsible-content" id="card-attn-body">
+        <div class="img-wrap">
+          <img id="img-attn" src="" alt="">
+          <canvas id="canvas-attn"></canvas>
+        </div>
       </div>
     </div>
-    <div class="overlay-card">
-      <div class="card-label"><div class="dot dot-tam"></div> TAM overlay</div>
-      <div class="img-wrap">
-        <img id="img-tam" src="" alt="">
-        <canvas id="canvas-tam"></canvas>
+    <div class="overlay-card" id="card-tam">
+      <div class="card-label">
+        <div class="dot dot-tam"></div> TAM overlay
+        <div class="card-norm-toggle" id="norm-toggle-tam">
+          <button class="active" onclick="switchNormMode('tam','relative')">Rel</button>
+          <button onclick="switchNormMode('tam','sqrt')">Sqrt</button>
+          <button onclick="switchNormMode('tam','clamp')">2-98%</button>
+        </div>
+        <span class="collapse-toggle" onclick="toggleCollapse('card-tam')" title="Toggle visibility">&#9660;</span>
+      </div>
+      <div class="collapsible-content" id="card-tam-body">
+        <div class="img-wrap">
+          <img id="img-tam" src="" alt="">
+          <canvas id="canvas-tam"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="overlay-card" id="card-dino">
+      <div class="card-label">
+        <div class="dot dot-dino"></div> DINOv2 attention
+        <span class="collapse-toggle" onclick="toggleCollapse('card-dino')" title="Toggle visibility">&#9660;</span>
+      </div>
+      <div class="collapsible-content" id="card-dino-body">
+        <div class="img-wrap">
+          <img id="img-dino" src="" alt="">
+          <canvas id="canvas-dino"></canvas>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="right-col">
-    <div class="token-section">
-      <div class="section-label">Generated sequence</div>
-      <div class="phase-legend" id="phase-legend">
-        <div class="phase-legend-item"><div class="phase-swatch" style="background:var(--color-thinking)"></div> Thinking</div>
-        <div class="phase-legend-item"><div class="phase-swatch" style="background:var(--color-answer)"></div> Answer</div>
+  <div class="col-resizer" id="col-resizer"></div>
+
+  <div class="right-col" id="right-col" style="flex: 1;">
+    <div class="token-section" id="token-section">
+      <div class="section-label">
+        Generated sequence
+        <span id="correctness-badge" class="correctness-badge" style="display:none"></span>
+        <span class="collapse-toggle" onclick="toggleCollapse('token-section')" title="Toggle visibility">&#9660;</span>
       </div>
-      <div class="token-flow" id="token-flow"></div>
+      <div class="collapsible-content" id="token-section-body">
+        <div class="phase-legend" id="phase-legend">
+          <div class="phase-legend-item"><div class="phase-swatch" style="background:var(--color-thinking)"></div> Thinking</div>
+          <div class="phase-legend-item"><div class="phase-swatch" style="background:var(--color-answer)"></div> Answer</div>
+        </div>
+        <div class="token-flow" id="token-flow"></div>
+      </div>
     </div>
-    <div class="bar-section">
+    <div class="row-resizer" id="row-resizer"></div>
+    <div class="bar-section" id="bar-section">
       <div class="bar-header">
-        <div class="section-label" style="margin-bottom:0">Token contributions &rarr; <span id="bar-target" style="font-weight:500;color:var(--color-text-primary)"></span></div>
+        <div class="section-label" style="margin-bottom:0">
+          Token contributions &rarr; <span id="bar-target" style="font-weight:500;color:var(--color-text-primary)"></span>
+          <span class="collapse-toggle" onclick="toggleCollapse('bar-section')" title="Toggle visibility">&#9660;</span>
+        </div>
         <div class="bar-controls">
-          <div class="norm-toggle">
-            <button id="btn-joint" class="active" onclick="switchNorm('joint')">Joint</button>
-            <button id="btn-pergroup" onclick="switchNorm('pergroup')">Per-group</button>
+          <div class="topk-toggle">
+            <button id="btn-top10" class="active" onclick="switchTopK(10)">Top 10</button>
+            <button id="btn-top20" onclick="switchTopK(20)">Top 20</button>
+            <button id="btn-topall" onclick="switchTopK(0)">All</button>
           </div>
           <div class="legend">
             <div class="legend-item"><div class="legend-swatch" style="background:#E24B4A"></div> Attn</div>
@@ -373,8 +578,10 @@
           </div>
         </div>
       </div>
-      <div class="selected-info">Showing contributions from image patches and prior text tokens into <span class="selected-token-name" id="selected-label">...</span></div>
-      <div class="bar-chart" id="bar-chart"></div>
+      <div class="collapsible-content" id="bar-section-body">
+        <div class="selected-info">Showing contributions from image patches and prior text tokens into <span class="selected-token-name" id="selected-label">...</span></div>
+        <div class="bar-chart" id="bar-chart"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -385,8 +592,13 @@ let manifest = null;
 let currentQIdx = 0;
 let currentModel = 'thinking';
 let selectedTokenIdx = 0;
-let normMode = 'joint';
+let topKLimit = 10; // 0 = all
+let currentLayer = 'all'; // 'all' or layer number as string e.g. '0', '4', ...
+const normModes = { attn: 'relative', tam: 'relative' };
 const dataCache = {};  // key: "q0001_thinking" → value: parsed JSON
+
+// Collapsed state for cards/sections
+const collapsedState = {};
 
 // ── Init ───────────────────────────────────────────────────────────
 async function init() {
@@ -399,6 +611,8 @@ async function init() {
     return;
   }
   populateQuestionDropdown();
+  initColResizer();
+  initRowResizer();
   await switchQuestion(0);
 }
 
@@ -413,17 +627,114 @@ function populateQuestionDropdown() {
   });
 }
 
-// ── Data loading ───────────────────────────────────────────────────
-function getCacheKey(qId, model) { return `${qId}_${model}`; }
+// ── Collapse/expand toggle ─────────────────────────────────────────
+function toggleCollapse(cardId) {
+  const body = document.getElementById(cardId + '-body');
+  const card = document.getElementById(cardId);
+  const toggle = card.querySelector('.collapse-toggle');
+  if (!body) return;
 
-async function loadPrecomputed(qId, model) {
-  const key = getCacheKey(qId, model);
+  const isCollapsed = body.classList.toggle('collapsed');
+  collapsedState[cardId] = isCollapsed;
+  if (toggle) toggle.classList.toggle('collapsed', isCollapsed);
+}
+
+// ── Column resizer (horizontal drag) ──────────────────────────────
+function initColResizer() {
+  const resizer = document.getElementById('col-resizer');
+  const leftCol = document.getElementById('left-col');
+  const container = document.getElementById('main-content');
+  let startX, startWidth;
+
+  function onMouseDown(e) {
+    e.preventDefault();
+    startX = e.clientX;
+    startWidth = leftCol.offsetWidth;
+    resizer.classList.add('dragging');
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
+
+  function onMouseMove(e) {
+    const containerWidth = container.offsetWidth;
+    const minWidth = containerWidth * 0.25;
+    const maxWidth = containerWidth * 0.75 - 16; // 16px for resizer
+    let newWidth = startWidth + (e.clientX - startX);
+    newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+    leftCol.style.width = newWidth + 'px';
+  }
+
+  function onMouseUp() {
+    resizer.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }
+
+  resizer.addEventListener('mousedown', onMouseDown);
+}
+
+// ── Row resizer (vertical drag between token section and bar section) ──
+function initRowResizer() {
+  const resizer = document.getElementById('row-resizer');
+  const tokenSection = document.getElementById('token-section');
+  const barSection = document.getElementById('bar-section');
+  const rightCol = document.getElementById('right-col');
+  let startY, startTokenH, startBarH;
+
+  function onMouseDown(e) {
+    e.preventDefault();
+    startY = e.clientY;
+    startTokenH = tokenSection.offsetHeight;
+    startBarH = barSection.offsetHeight;
+    resizer.classList.add('dragging');
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
+
+  function onMouseMove(e) {
+    const delta = e.clientY - startY;
+    const minH = 80;
+    let newTokenH = startTokenH + delta;
+    let newBarH = startBarH - delta;
+    if (newTokenH < minH) { newTokenH = minH; newBarH = startTokenH + startBarH - minH; }
+    if (newBarH < minH) { newBarH = minH; newTokenH = startTokenH + startBarH - minH; }
+    tokenSection.style.height = newTokenH + 'px';
+    tokenSection.style.maxHeight = 'none';
+    barSection.style.height = newBarH + 'px';
+    barSection.style.maxHeight = 'none';
+    barSection.style.flex = 'none';
+  }
+
+  function onMouseUp() {
+    resizer.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }
+
+  resizer.addEventListener('mousedown', onMouseDown);
+}
+
+// ── Data loading ───────────────────────────────────────────────────
+function getCacheKey(qId, model, layer) { return `${qId}_${model}_L${layer}`; }
+
+async function loadPrecomputed(qId, model, layer) {
+  layer = layer || 'all';
+  const key = getCacheKey(qId, model, layer);
   if (dataCache[key]) return dataCache[key];
 
   const q = manifest.questions.find(q => q.id === qId);
   if (!q || !q.models[model]) return null;
 
-  const resp = await fetch(q.models[model].data_path);
+  let url;
+  if (layer === 'all') {
+    url = q.models[model].data_path;
+  } else {
+    const layerPaths = q.models[model].layer_data_paths;
+    if (!layerPaths || !layerPaths[layer]) return null;
+    url = layerPaths[layer];
+  }
+
+  const resp = await fetch(url);
   const data = await resp.json();
   dataCache[key] = data;
   return data;
@@ -444,28 +755,62 @@ async function switchQuestion(idx) {
   }
   updateModelButtons();
 
-  // Load image into all three cards
-  ['img-human', 'img-attn', 'img-tam'].forEach(id => {
+  // Load image into all cards
+  ['img-human', 'img-attn', 'img-tam', 'img-dino'].forEach(id => {
     document.getElementById(id).src = q.image_path;
   });
 
-  // Render human heatmap (static per question)
+  // Populate layer dropdown
+  populateLayerDropdown(q);
+
+  // Render static heatmaps (human + DINO)
   renderHumanHeatmap(q);
+  renderDinoHeatmap(q);
+
+  // Update correctness badge
+  updateCorrectnessBadge(q);
 
   // Load precomputed data
   selectedTokenIdx = 0;
   document.getElementById('token-flow').innerHTML = '<div class="loading">Loading...</div>';
-  await loadPrecomputed(q.id, currentModel);
+  await loadPrecomputed(q.id, currentModel, currentLayer);
   renderTokens();
 }
 
-function switchModel(model) {
+async function switchModel(model) {
   const q = manifest.questions[currentQIdx];
   if (!q.models[model]) return;
   currentModel = model;
   updateModelButtons();
+  updateCorrectnessBadge(q);
   selectedTokenIdx = 0;
+  await loadPrecomputed(q.id, currentModel, currentLayer);
   renderTokens();
+}
+
+function populateLayerDropdown(q) {
+  const sel = document.getElementById('layer-select');
+  sel.innerHTML = '<option value="all">All (avg)</option>';
+  const layers = q.selected_layers || [];
+  for (const l of layers) {
+    const opt = document.createElement('option');
+    opt.value = String(l);
+    opt.textContent = `Layer ${l}`;
+    sel.appendChild(opt);
+  }
+  // Restore current selection if available, else reset to all
+  if (currentLayer !== 'all' && !layers.includes(parseInt(currentLayer))) {
+    currentLayer = 'all';
+  }
+  sel.value = currentLayer;
+}
+
+async function switchLayer(layer) {
+  currentLayer = layer;
+  const q = manifest.questions[currentQIdx];
+  await loadPrecomputed(q.id, currentModel, currentLayer);
+  renderOverlays();
+  renderBars();
 }
 
 function updateModelButtons() {
@@ -473,11 +818,39 @@ function updateModelButtons() {
   document.getElementById('btn-instruct').className = currentModel === 'instruct' ? 'active' : '';
 }
 
-function switchNorm(mode) {
-  normMode = mode;
-  document.getElementById('btn-joint').className = mode === 'joint' ? 'active' : '';
-  document.getElementById('btn-pergroup').className = mode === 'pergroup' ? 'active' : '';
+function switchTopK(k) {
+  topKLimit = k;
+  document.getElementById('btn-top10').className = k === 10 ? 'active' : '';
+  document.getElementById('btn-top20').className = k === 20 ? 'active' : '';
+  document.getElementById('btn-topall').className = k === 0 ? 'active' : '';
   renderBars();
+}
+
+function switchNormMode(type, mode) {
+  normModes[type] = mode;
+  const toggle = document.getElementById('norm-toggle-' + type);
+  const modeMap = { 'rel': 'relative', 'sqrt': 'sqrt', '2-98%': 'clamp' };
+  toggle.querySelectorAll('button').forEach(btn => {
+    btn.className = modeMap[btn.textContent.toLowerCase()] === mode ? 'active' : '';
+  });
+  renderOverlays();
+}
+
+function updateCorrectnessBadge(q) {
+  const badge = document.getElementById('correctness-badge');
+  const modelData = q.models[currentModel];
+  if (modelData && modelData.is_correct !== null && modelData.is_correct !== undefined) {
+    badge.style.display = 'inline-flex';
+    if (modelData.is_correct) {
+      badge.className = 'correctness-badge correct';
+      badge.textContent = '\u2713 Correct';
+    } else {
+      badge.className = 'correctness-badge incorrect';
+      badge.textContent = '\u2717 Incorrect';
+    }
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 // ── Token rendering ────────────────────────────────────────────────
@@ -494,6 +867,18 @@ function renderTokens() {
   // Show phase legend only if there are thinking tokens
   const hasThinking = tokens.some(t => t.phase === 'thinking');
   document.getElementById('phase-legend').style.display = hasThinking ? 'flex' : 'none';
+
+  // Count tokens per phase and update legend
+  const phaseCounts = {};
+  tokens.forEach(t => { phaseCounts[t.phase] = (phaseCounts[t.phase] || 0) + 1; });
+  const legend = document.getElementById('phase-legend');
+  legend.innerHTML = '';
+  if (phaseCounts.thinking) {
+    legend.innerHTML += `<div class="phase-legend-item"><div class="phase-swatch" style="background:var(--color-thinking)"></div> Thinking (${phaseCounts.thinking})</div>`;
+  }
+  if (phaseCounts.answer) {
+    legend.innerHTML += `<div class="phase-legend-item"><div class="phase-swatch" style="background:var(--color-answer)"></div> Answer (${phaseCounts.answer})</div>`;
+  }
 
   let currentPhase = null;
   tokens.forEach((t, i) => {
@@ -535,38 +920,25 @@ function updateSelection() {
     else s.classList.add('future');
   });
   const selTok = tokens[selectedTokenIdx];
-  document.getElementById('selected-label').textContent = selTok ? selTok.text : '...';
-  document.getElementById('bar-target').textContent = selTok ? '"' + selTok.text.trim() + '"' : '';
+  document.getElementById('selected-label').textContent = selTok ? `${selTok.text} [${selectedTokenIdx}]` : '...';
+  document.getElementById('bar-target').textContent = selTok ? `"${selTok.text.trim()}" [${selectedTokenIdx}]` : '';
   renderOverlays();
   renderBars();
 }
 
 // ── Jet colormap (matches matplotlib plt.cm.jet) ──────────────────
-// Attempt to replicate matplotlib's jet colormap as closely as possible.
-// jet goes: dark blue → blue → cyan → green → yellow → red → dark red
 function jetColormap(t) {
-  // t in [0, 1] → [r, g, b] each in [0, 255]
   let r, g, b;
   if (t < 0.125) {
-    r = 0;
-    g = 0;
-    b = 0.5 + t / 0.125 * 0.5;
+    r = 0; g = 0; b = 0.5 + t / 0.125 * 0.5;
   } else if (t < 0.375) {
-    r = 0;
-    g = (t - 0.125) / 0.25;
-    b = 1;
+    r = 0; g = (t - 0.125) / 0.25; b = 1;
   } else if (t < 0.625) {
-    r = (t - 0.375) / 0.25;
-    g = 1;
-    b = 1 - (t - 0.375) / 0.25;
+    r = (t - 0.375) / 0.25; g = 1; b = 1 - (t - 0.375) / 0.25;
   } else if (t < 0.875) {
-    r = 1;
-    g = 1 - (t - 0.625) / 0.25;
-    b = 0;
+    r = 1; g = 1 - (t - 0.625) / 0.25; b = 0;
   } else {
-    r = 1 - (t - 0.875) / 0.125 * 0.5;
-    g = 0;
-    b = 0;
+    r = 1 - (t - 0.875) / 0.125 * 0.5; g = 0; b = 0;
   }
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
@@ -580,19 +952,14 @@ function percentile(arr, pct) {
 }
 
 // ── Heatmap rendering ──────────────────────────────────────────────
-// Matches the codebase's overlay_heatmap(): percentile clamping (2–95),
-// normalize to [0,1], jet colormap, bilinear-interpolated, alpha-blended
-// over the source image.
-//
-// Strategy: draw jet colors at native grid resolution (e.g. 28×50) on a
-// tiny offscreen canvas, then let the browser's imageSmoothingEnabled
-// bilinear-interpolate when scaling it up onto the display canvas. This
-// replicates cv2.resize(..., INTER_LINEAR) used in the Python pipeline.
-function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha) {
+// normMode: 'clamp' = percentile 2-95 (human, DINO)
+//           'relative' = max-normalize v/max
+//           'sqrt' = sqrt(v/max) — boosts low values
+//           'absolute' = raw values, no rescaling (faint when attention is low)
+function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha, normMode) {
   const canvas = document.getElementById(canvasId);
   const img = document.getElementById(imgId);
 
-  // Display resolution — match image natural size (capped for perf)
   const renderW = img && img.naturalWidth > 0 ? Math.min(img.naturalWidth, 800) : 800;
   const renderH = Math.round(renderW * gridH / gridW);
   canvas.width = renderW;
@@ -607,16 +974,25 @@ function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha) {
     ctx.drawImage(img, 0, 0, renderW, renderH);
   }
 
-  // Normalize to [0, 1] with sqrt transform for contrast enhancement.
-  // Per-token attention is very sparse (few high peaks, most near zero).
-  // Percentile clamping would clip the meaningful peaks, so we use
-  // min-max + sqrt to spread out the low-end values and reveal structure.
-  const pMin = Math.min(...patches);
-  const pMax = Math.max(...patches);
-  const range = pMax - pMin || 1;
-  const normed = patches.map(v => Math.sqrt((v - pMin) / range));
+  let normed;
+  const pMax = Math.max(...patches, 0);
+  if (normMode === 'clamp') {
+    // Percentile clamping (2–95) — for human & DINO aggregate maps
+    const lo = percentile(patches, 2);
+    const hi = percentile(patches, 98);
+    const clamped = patches.map(v => Math.max(lo, Math.min(hi, v)));
+    const cMin = Math.min(...clamped);
+    const cMax = Math.max(...clamped);
+    const range = cMax - cMin || 1;
+    normed = clamped.map(v => (v - cMin) / range);
+  } else if (normMode === 'sqrt') {
+    // Sqrt of max-normalized — boosts low values, good middle ground
+    normed = pMax > 0 ? patches.map(v => Math.sqrt(v / pMax)) : patches.map(() => 0);
+  } else {
+    // 'relative' — max-normalize
+    normed = pMax > 0 ? patches.map(v => v / pMax) : patches.map(() => 0);
+  }
 
-  // Draw jet colors at native grid resolution on offscreen canvas
   const offscreen = document.createElement('canvas');
   offscreen.width = gridW;
   offscreen.height = gridH;
@@ -629,15 +1005,11 @@ function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha) {
       const v = normed[r * gridW + c];
       const [jr, jg, jb] = jetColormap(v);
       const idx = (r * gridW + c) * 4;
-      offPx[idx]     = jr;
-      offPx[idx + 1] = jg;
-      offPx[idx + 2] = jb;
-      offPx[idx + 3] = 255;
+      offPx[idx] = jr; offPx[idx + 1] = jg; offPx[idx + 2] = jb; offPx[idx + 3] = 255;
     }
   }
   offCtx.putImageData(offData, 0, 0);
 
-  // Scale up with bilinear interpolation (browser smoothing) and alpha blend
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.globalAlpha = alpha;
@@ -648,16 +1020,26 @@ function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha) {
 function renderHumanHeatmap(q) {
   if (q.human_heatmap && q.human_heatmap.length > 0) {
     const [gh, gw] = q.patch_grid;
-    // Wait for image to load before drawing
     const img = document.getElementById('img-human');
-    const draw = () => drawHeatmap('canvas-human', 'img-human', q.human_heatmap, gh, gw, 0.5);
-    if (img.complete && img.naturalWidth > 0) {
-      draw();
-    } else {
-      img.onload = draw;
-    }
+    const draw = () => drawHeatmap('canvas-human', 'img-human', q.human_heatmap, gh, gw, 0.5, 'clamp');
+    if (img.complete && img.naturalWidth > 0) draw();
+    else img.onload = draw;
   } else {
     const canvas = document.getElementById('canvas-human');
+    canvas.width = 1; canvas.height = 1;
+    canvas.getContext('2d').clearRect(0, 0, 1, 1);
+  }
+}
+
+function renderDinoHeatmap(q) {
+  if (q.dino_heatmap && q.dino_heatmap.length > 0) {
+    const [gh, gw] = q.patch_grid;
+    const img = document.getElementById('img-dino');
+    const draw = () => drawHeatmap('canvas-dino', 'img-dino', q.dino_heatmap, gh, gw, 0.5, 'clamp');
+    if (img.complete && img.naturalWidth > 0) draw();
+    else img.onload = draw;
+  } else {
+    const canvas = document.getElementById('canvas-dino');
     canvas.width = 1; canvas.height = 1;
     canvas.getContext('2d').clearRect(0, 0, 1, 1);
   }
@@ -666,7 +1048,7 @@ function renderHumanHeatmap(q) {
 function renderOverlays() {
   const q = manifest.questions[currentQIdx];
   const [gridH, gridW] = q.patch_grid;
-  const key = getCacheKey(q.id, currentModel);
+  const key = getCacheKey(q.id, currentModel, currentLayer);
   const precomputed = dataCache[key];
 
   if (!precomputed || !precomputed.token_data[selectedTokenIdx]) {
@@ -679,15 +1061,15 @@ function renderOverlays() {
   }
 
   const td = precomputed.token_data[selectedTokenIdx];
-  drawHeatmap('canvas-attn', 'img-attn', td.patch_attention, gridH, gridW, 0.5);
-  drawHeatmap('canvas-tam', 'img-tam', td.patch_tam, gridH, gridW, 0.5);
+  drawHeatmap('canvas-attn', 'img-attn', td.patch_attention, gridH, gridW, 0.5, normModes.attn);
+  drawHeatmap('canvas-tam', 'img-tam', td.patch_tam, gridH, gridW, 0.5, normModes.tam);
 }
 
 // ── Bar chart rendering ────────────────────────────────────────────
 function renderBars() {
   const tokens = getTokens();
   const q = manifest.questions[currentQIdx];
-  const key = getCacheKey(q.id, currentModel);
+  const key = getCacheKey(q.id, currentModel, currentLayer);
   const precomputed = dataCache[key];
   const chart = document.getElementById('bar-chart');
   chart.innerHTML = '';
@@ -699,38 +1081,23 @@ function renderBars() {
 
   const td = precomputed.token_data[selectedTokenIdx];
 
-  // Image aggregate = mean of patch values
-  const imgAttnRaw = td.patch_attention.length > 0
-    ? td.patch_attention.reduce((a, b) => a + b, 0) / td.patch_attention.length
-    : 0;
-  const imgTamRaw = td.patch_tam.length > 0
-    ? td.patch_tam.reduce((a, b) => a + b, 0) / td.patch_tam.length
-    : 0;
-  const textAttnRaw = td.text_attention;
-  const textTamRaw = td.text_tam;
+  // Compute image-to-text ratio
+  const imgAttnSum = td.patch_attention.length > 0
+    ? td.patch_attention.reduce((a, b) => a + b, 0) : 0;
+  const imgTamSum = td.patch_tam.length > 0
+    ? td.patch_tam.reduce((a, b) => a + b, 0) : 0;
+  const textAttnSum = td.text_attention.length > 0
+    ? td.text_attention.reduce((a, b) => a + b, 0) : 0;
+  const textTamSum = td.text_tam.length > 0
+    ? td.text_tam.reduce((a, b) => a + b, 0) : 0;
 
-  let imgAttnBar, imgTamBar, textAttnBars, textTamBars;
+  const attnTotal = imgAttnSum + textAttnSum;
+  const tamTotal = imgTamSum + textTamSum;
+  const attnImgPct = attnTotal > 0 ? imgAttnSum / attnTotal : 0;
+  const tamImgPct = tamTotal > 0 ? imgTamSum / tamTotal : 0;
 
-  if (normMode === 'joint') {
-    const allAttn = [imgAttnRaw, ...textAttnRaw];
-    const allTam = [imgTamRaw, ...textTamRaw];
-    const maxAttn = Math.max(...allAttn, 0.001);
-    const maxTam = Math.max(...allTam, 0.001);
-    imgAttnBar = imgAttnRaw / maxAttn;
-    imgTamBar = imgTamRaw / maxTam;
-    textAttnBars = textAttnRaw.map(v => v / maxAttn);
-    textTamBars = textTamRaw.map(v => v / maxTam);
-  } else {
-    imgAttnBar = 1.0;
-    imgTamBar = 1.0;
-    const maxTextAttn = Math.max(...textAttnRaw, 0.001);
-    const maxTextTam = Math.max(...textTamRaw, 0.001);
-    textAttnBars = textAttnRaw.map(v => v / maxTextAttn);
-    textTamBars = textTamRaw.map(v => v / maxTextTam);
-  }
-
-  // Image aggregate row
-  chart.appendChild(createBarRow('Image patches', imgAttnBar, imgTamBar, true));
+  // Image → Text ratio row
+  chart.appendChild(createRatioRow('Img \u2194 Text', attnImgPct, tamImgPct));
 
   // Divider
   const divider = document.createElement('div');
@@ -740,59 +1107,187 @@ function renderBars() {
   if (selectedTokenIdx === 0) {
     const note = document.createElement('div');
     note.style.cssText = 'font-size:12px;color:var(--color-text-tertiary);padding:12px 0;text-align:center;';
-    note.textContent = 'First token — no prior text tokens to display.';
+    note.textContent = 'First token \u2014 no prior text tokens to display.';
     chart.appendChild(note);
     return;
   }
 
-  // Text token rows with phase labels
-  let currentPhase = null;
-  for (let i = 0; i < selectedTokenIdx; i++) {
-    const tok = tokens[i];
-    // Add phase header on transition
-    if (tok.phase !== currentPhase) {
-      currentPhase = tok.phase;
-      const phaseLabel = document.createElement('div');
-      phaseLabel.className = `bar-phase-label ${tok.phase}`;
-      phaseLabel.textContent = tok.phase === 'thinking' ? 'Thinking tokens' : 'Answer tokens';
-      chart.appendChild(phaseLabel);
-    }
+  // Build items list
+  const textAttnRaw = td.text_attention;
+  const textTamRaw = td.text_tam;
+  const totalAttn = imgAttnSum + textAttnSum;
+  const totalTam = imgTamSum + textTamSum;
 
-    const attnVal = i < textAttnBars.length ? textAttnBars[i] : 0;
-    const tamVal = i < textTamBars.length ? textTamBars[i] : 0;
-    chart.appendChild(createBarRow(tok.text, attnVal, tamVal, false));
+  const items = [];
+  for (let i = 0; i < selectedTokenIdx; i++) {
+    items.push({
+      idx: i,
+      tok: tokens[i],
+      attnRaw: i < textAttnRaw.length ? textAttnRaw[i] : 0,
+      tamRaw: i < textTamRaw.length ? textTamRaw[i] : 0,
+    });
   }
+
+  // Independent top-K for each type
+  let attnItems, tamItems;
+  if (topKLimit > 0 && items.length > topKLimit) {
+    attnItems = [...items].sort((a, b) => b.attnRaw - a.attnRaw).slice(0, topKLimit).sort((a, b) => a.idx - b.idx);
+    tamItems = [...items].sort((a, b) => b.tamRaw - a.tamRaw).slice(0, topKLimit).sort((a, b) => a.idx - b.idx);
+  } else {
+    attnItems = items;
+    tamItems = items;
+  }
+
+  // Dual column container
+  const dual = document.createElement('div');
+  dual.className = 'dual-cols';
+
+  // --- Attn column (label on left, bar on right) ---
+  const attnCol = document.createElement('div');
+  const attnHeader = document.createElement('div');
+  attnHeader.className = 'dual-col-header';
+  attnHeader.innerHTML = '<div class="legend-swatch" style="background:#E24B4A"></div> Attention';
+  attnCol.appendChild(attnHeader);
+  const attnList = document.createElement('div');
+  attnList.className = 'single-list';
+  const maxAttn = Math.max(...attnItems.map(x => x.attnRaw), 0.001);
+  let attnPhase = null;
+  for (const item of attnItems) {
+    if (item.tok.phase !== attnPhase) {
+      attnPhase = item.tok.phase;
+      const ph = document.createElement('div');
+      ph.className = `bar-phase-label ${item.tok.phase}`;
+      ph.textContent = item.tok.phase === 'thinking' ? 'Thinking' : 'Answer';
+      attnList.appendChild(ph);
+    }
+    const pctStr = totalAttn > 0 ? (item.attnRaw / totalAttn * 100).toFixed(1) + '%' : '';
+    const label = topKLimit > 0 ? `${item.tok.text} [${item.idx}]` : item.tok.text;
+    attnList.appendChild(createSingleBarRow(label, item.attnRaw / maxAttn, pctStr, 'attn', 'left'));
+  }
+  attnCol.appendChild(attnList);
+  if (topKLimit > 0 && items.length > topKLimit) {
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:10px;color:var(--color-text-tertiary);padding:4px 0;text-align:center;';
+    note.textContent = `Top ${topKLimit} of ${items.length}`;
+    attnCol.appendChild(note);
+  }
+
+  // --- TAM column (bar on left, label on right) ---
+  const tamCol = document.createElement('div');
+  const tamHeader = document.createElement('div');
+  tamHeader.className = 'dual-col-header';
+  tamHeader.style.justifyContent = 'flex-end';
+  tamHeader.innerHTML = 'TAM <div class="legend-swatch" style="background:#378ADD"></div>';
+  tamCol.appendChild(tamHeader);
+  const tamList = document.createElement('div');
+  tamList.className = 'single-list';
+  const maxTam = Math.max(...tamItems.map(x => x.tamRaw), 0.001);
+  let tamPhase = null;
+  for (const item of tamItems) {
+    if (item.tok.phase !== tamPhase) {
+      tamPhase = item.tok.phase;
+      const ph = document.createElement('div');
+      ph.className = `bar-phase-label ${item.tok.phase}`;
+      ph.style.textAlign = 'right';
+      ph.textContent = item.tok.phase === 'thinking' ? 'Thinking' : 'Answer';
+      tamList.appendChild(ph);
+    }
+    const pctStr = totalTam > 0 ? (item.tamRaw / totalTam * 100).toFixed(1) + '%' : '';
+    const label = topKLimit > 0 ? `${item.tok.text} [${item.idx}]` : item.tok.text;
+    tamList.appendChild(createSingleBarRow(label, item.tamRaw / maxTam, pctStr, 'tam', 'right'));
+  }
+  tamCol.appendChild(tamList);
+  if (topKLimit > 0 && items.length > topKLimit) {
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:10px;color:var(--color-text-tertiary);padding:4px 0;text-align:center;';
+    note.textContent = `Top ${topKLimit} of ${items.length}`;
+    tamCol.appendChild(note);
+  }
+
+  dual.appendChild(attnCol);
+  dual.appendChild(tamCol);
+  chart.appendChild(dual);
 }
 
-function createBarRow(label, attnPct, tamPct, isImageAgg) {
+function createRatioRow(label, attnImgPct, tamImgPct) {
   const row = document.createElement('div');
-  row.className = isImageAgg ? 'bar-row image-agg' : 'bar-row';
+  row.className = 'ratio-row';
 
   const lbl = document.createElement('div');
   lbl.className = 'bar-label';
-  if (isImageAgg) {
-    lbl.innerHTML = '<span class="img-icon">&#9638;</span> ' + label;
-  } else {
-    lbl.textContent = label;
-  }
+  lbl.style.fontWeight = '500';
+  lbl.style.color = 'var(--color-text-primary)';
+  lbl.textContent = label;
 
+  // Attention ratio track
   const attnTrack = document.createElement('div');
-  attnTrack.className = 'bar-track';
-  const attnFill = document.createElement('div');
-  attnFill.className = 'bar-fill attn';
-  attnFill.style.width = (Math.min(attnPct, 1) * 100).toFixed(1) + '%';
-  attnTrack.appendChild(attnFill);
+  attnTrack.className = 'ratio-track';
+  attnTrack.style.position = 'relative';
+  const attnImg = document.createElement('div');
+  attnImg.className = 'ratio-fill-img attn';
+  attnImg.style.width = (attnImgPct * 100).toFixed(1) + '%';
+  const attnTxt = document.createElement('div');
+  attnTxt.className = 'ratio-fill-text attn';
+  attnTxt.style.width = ((1 - attnImgPct) * 100).toFixed(1) + '%';
+  const attnLabel = document.createElement('div');
+  attnLabel.className = 'ratio-label-overlay';
+  attnLabel.textContent = (attnImgPct * 100).toFixed(0) + '% img';
+  attnTrack.appendChild(attnImg);
+  attnTrack.appendChild(attnTxt);
+  attnTrack.appendChild(attnLabel);
 
+  // TAM ratio track
   const tamTrack = document.createElement('div');
-  tamTrack.className = 'bar-track';
-  const tamFill = document.createElement('div');
-  tamFill.className = 'bar-fill tam';
-  tamFill.style.width = (Math.min(tamPct, 1) * 100).toFixed(1) + '%';
-  tamTrack.appendChild(tamFill);
+  tamTrack.className = 'ratio-track';
+  tamTrack.style.position = 'relative';
+  const tamImg = document.createElement('div');
+  tamImg.className = 'ratio-fill-img tam';
+  tamImg.style.width = (tamImgPct * 100).toFixed(1) + '%';
+  const tamTxt = document.createElement('div');
+  tamTxt.className = 'ratio-fill-text tam';
+  tamTxt.style.width = ((1 - tamImgPct) * 100).toFixed(1) + '%';
+  const tamLabel = document.createElement('div');
+  tamLabel.className = 'ratio-label-overlay';
+  tamLabel.textContent = (tamImgPct * 100).toFixed(0) + '% img';
+  tamTrack.appendChild(tamImg);
+  tamTrack.appendChild(tamTxt);
+  tamTrack.appendChild(tamLabel);
 
   row.appendChild(lbl);
   row.appendChild(attnTrack);
   row.appendChild(tamTrack);
+  return row;
+}
+
+// side: 'left' = label|bar (attn), 'right' = bar|label (TAM)
+function createSingleBarRow(label, barPct, pctStr, type, side) {
+  const row = document.createElement('div');
+  row.className = side === 'left' ? 'sbar-row' : 'sbar-row-r';
+
+  const lbl = document.createElement('div');
+  lbl.className = `sbar-label ${side}`;
+  lbl.textContent = label;
+
+  const track = document.createElement('div');
+  track.className = 'bar-track';
+  const fill = document.createElement('div');
+  fill.className = `bar-fill ${type}`;
+  fill.style.width = (Math.min(barPct, 1) * 100).toFixed(1) + '%';
+  track.appendChild(fill);
+  if (pctStr) {
+    const pct = document.createElement('div');
+    pct.className = 'bar-pct';
+    pct.textContent = pctStr;
+    track.appendChild(pct);
+  }
+
+  if (side === 'left') {
+    row.appendChild(lbl);
+    row.appendChild(track);
+  } else {
+    row.appendChild(track);
+    row.appendChild(lbl);
+  }
   return row;
 }
 
