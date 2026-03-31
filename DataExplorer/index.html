@@ -6,15 +6,17 @@
 <title>DriVQA Visualization</title>
 <style>
   :root {
-    --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --color-text-primary: #1a1a1a;
     --color-text-secondary: #6b6b6b;
     --color-text-tertiary: #999;
     --color-background-primary: #fff;
-    --color-background-secondary: #f5f5f4;
-    --color-border-tertiary: rgba(0,0,0,0.12);
-    --color-border-secondary: rgba(0,0,0,0.2);
+    --color-background-secondary: #f5f5f0;
+    --color-border-tertiary: rgba(0,0,0,0.15);
+    --color-border-secondary: rgba(0,0,0,0.3);
     --color-background-info: #e6f1fb;
+    --color-background-danger: #FCEBEB;
+    --color-text-danger: #A32D2D;
     --border-radius-md: 8px;
     --border-radius-lg: 12px;
     --color-thinking: #b07d2b;
@@ -24,14 +26,16 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --color-text-primary: #e8e6df;
-      --color-text-secondary: #9c9a92;
-      --color-text-tertiary: #6d6b65;
-      --color-background-primary: #1e1e1c;
-      --color-background-secondary: #2a2a28;
-      --color-border-tertiary: rgba(255,255,255,0.1);
-      --color-border-secondary: rgba(255,255,255,0.2);
+      --color-text-primary: #e8e8e8;
+      --color-text-secondary: #a0a0a0;
+      --color-text-tertiary: #707070;
+      --color-background-primary: #1a1a1a;
+      --color-background-secondary: #2c2c2a;
+      --color-border-tertiary: rgba(255,255,255,0.15);
+      --color-border-secondary: rgba(255,255,255,0.3);
       --color-background-info: #0c447c33;
+      --color-background-danger: #501313;
+      --color-text-danger: #F09595;
       --color-thinking: #d4a04a;
       --color-thinking-bg: #3a3020;
       --color-answer: #63b3ed;
@@ -47,27 +51,82 @@
     min-height: 100vh;
   }
 
-  .top-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px;
+  /* ── Unified toolbar card ── */
+  .toolbar-card {
+    background: var(--color-background-primary);
     border: 0.5px solid var(--color-border-tertiary);
     border-radius: var(--border-radius-lg);
-    background: var(--color-background-primary);
-    margin-bottom: 8px;
+    overflow: hidden;
+    margin-bottom: 12px;
   }
-  .top-bar select {
-    flex: 1; max-width: 560px;
-    font-size: 14px; font-weight: 500;
-    background: var(--color-background-secondary);
+  .toolbar-row {
+    padding: 12px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .toolbar-row + .toolbar-row {
+    border-top: 0.5px solid var(--color-border-tertiary);
+  }
+  .toolbar-row.header-row { padding: 16px 20px; }
+  .toolbar-row.options-row { padding: 10px 20px; }
+  .toolbar-title {
+    font-size: 18px; font-weight: 500; margin: 0;
     color: var(--color-text-primary);
+  }
+
+  /* Pill toggle (used for Detail/Summary, Side-by-side/Token match, etc.) */
+  .pill-toggle {
+    display: inline-flex;
+    border: 0.5px solid var(--color-border-secondary);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+  }
+  .pill-toggle button {
+    padding: 4px 12px; font-size: 13px; font-weight: 500; cursor: pointer;
+    border: none; background: transparent; color: var(--color-text-secondary);
+    transition: all 0.15s;
+  }
+  .pill-toggle button.active {
+    background: var(--color-text-primary); color: var(--color-background-primary);
+  }
+  .pill-toggle button:disabled {
+    opacity: 0.4; cursor: not-allowed;
+  }
+  .pill-toggle.sm button { font-size: 12px; }
+
+
+  /* Styled select / dropdown look */
+  .toolbar-select {
+    font-size: 13px; font-weight: 400;
+    color: var(--color-text-primary);
+    background: transparent;
     border: 0.5px solid var(--color-border-tertiary);
     border-radius: var(--border-radius-md);
-    padding: 6px 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
   }
-  .model-toggle {
-    display: flex; align-items: center; gap: 8px; font-size: 13px;
-    color: var(--color-text-secondary);
+  .toolbar-select:focus { outline: none; border-color: var(--color-border-secondary); }
+  .toolbar-select.question-select { flex: 1; max-width: 480px; min-width: 240px; }
+  .toolbar-select.model-select { min-width: 140px; }
+  .toolbar-select.layer-select { min-width: 90px; font-size: 12px; padding: 4px 24px 4px 10px; }
+
+  /* Expected answer badge */
+  .expected-badge {
+    font-size: 13px; font-weight: 500;
+    padding: 2px 10px;
+    border-radius: var(--border-radius-md);
   }
+
+  .toolbar-label {
+    font-size: 12px; color: var(--color-text-secondary);
+  }
+
+  /* Legacy compat: keep .toggle-btn for any remaining uses outside toolbar */
   .toggle-btn {
     display: flex; background: var(--color-background-secondary);
     border: 0.5px solid var(--color-border-tertiary);
@@ -84,16 +143,6 @@
   .toggle-btn button:disabled {
     opacity: 0.4; cursor: not-allowed;
   }
-
-  .expected-row {
-    padding: 10px 16px; font-size: 13px;
-    color: var(--color-text-secondary);
-    border: 0.5px solid var(--color-border-tertiary);
-    border-radius: var(--border-radius-md);
-    background: var(--color-background-secondary);
-    margin-bottom: 12px;
-  }
-  .expected-row strong { color: var(--color-text-primary); font-weight: 500; }
 
   .main-content {
     display: flex;
@@ -213,6 +262,38 @@
   .img-wrap canvas {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
   }
+  .img-wrap canvas.bbox-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 2;
+  }
+  .moving-avg-controls {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 0; font-size: 12px;
+  }
+  .moving-avg-controls label {
+    display: flex; align-items: center; gap: 4px; cursor: pointer;
+    color: var(--color-text-secondary);
+  }
+  .moving-avg-controls input[type="range"] {
+    width: 100px; vertical-align: middle; accent-color: #63b3ed;
+  }
+  .detection-toggle {
+    font-size: 11px; cursor: pointer;
+    padding: 2px 6px; border-radius: 4px;
+    border: 1px solid var(--color-border-tertiary);
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+    margin-left: 4px;
+  }
+  .detection-toggle.active {
+    background: #48bb7822; border-color: #48bb78; color: #48bb78;
+  }
+  .grounding-badge {
+    font-size: 11px; font-weight: 500;
+    padding: 1px 6px; border-radius: 4px;
+    background: #48bb7822; color: #48bb78;
+    margin-left: 6px;
+  }
   .img-placeholder {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
@@ -267,7 +348,19 @@
     outline: 1.5px solid #378ADD;
     font-weight: 500;
   }
+  .token.static-token {
+    cursor: default;
+  }
+  .token.static-token:hover {
+    background: transparent;
+  }
   .token.future { color: var(--color-text-tertiary); opacity: 0.4; }
+  .token.in-window {
+    background: rgba(99, 179, 237, 0.25);
+    outline: 2px solid rgba(99, 179, 237, 0.85);
+    border-bottom: 2px solid #63b3ed;
+    border-radius: 2px;
+  }
 
   /* Phase styling */
   .token.phase-thinking { border-bottom: 2px solid var(--color-thinking); }
@@ -314,6 +407,9 @@
   }
   .bar-controls {
     display: flex; align-items: center; gap: 10px;
+  }
+  .detail-panel-target-wrap {
+    display: inline;
   }
   .legend { display: flex; gap: 14px; font-size: 11px; color: var(--color-text-secondary); }
   .legend-item { display: flex; align-items: center; gap: 4px; }
@@ -410,6 +506,79 @@
     font-weight: 500; color: var(--color-text-primary);
     background: #378ADD22; padding: 1px 6px; border-radius: 3px;
   }
+  .layer-analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+  }
+  .layer-analysis-card {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 12px;
+    background: var(--color-background-secondary);
+  }
+  .layer-analysis-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .layer-analysis-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .layer-analysis-badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--color-background-info);
+    color: var(--color-text-primary);
+  }
+  .layer-analysis-section + .layer-analysis-section {
+    margin-top: 12px;
+  }
+  .layer-analysis-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-tertiary);
+    margin-bottom: 6px;
+  }
+
+  .info-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    font-size: 9px; font-weight: 600; font-style: normal;
+    color: var(--color-text-tertiary);
+    cursor: help; position: relative; flex-shrink: 0;
+  }
+  .info-icon:hover { background: var(--color-background-info); color: var(--color-text-secondary); }
+  .info-icon .info-tooltip {
+    display: none;
+    position: absolute; top: calc(100% + 6px); left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-text-primary); color: var(--color-background-primary);
+    font-size: 11px; font-weight: 400; line-height: 1.4;
+    padding: 6px 10px; border-radius: 6px;
+    white-space: normal; width: max-content; max-width: 260px;
+    z-index: 100; pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .info-icon .info-tooltip::after {
+    content: ''; position: absolute; bottom: 100%; left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-bottom-color: var(--color-text-primary);
+  }
+  .info-icon:hover .info-tooltip { display: block; }
 
   .loading {
     display: flex; align-items: center; justify-content: center;
@@ -454,70 +623,620 @@
     .main-content { flex-direction: column; }
     .col-resizer { display: none; }
   }
+
+  /* ── Mode toggle ── */
+  /* mode-toggle is now inside the toolbar card as a pill-toggle */
+
+  /* ── Summary view ── */
+  .summary-view { padding: 0; }
+
+  .summary-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .summary-controls-left { display: flex; align-items: center; gap: 8px; }
+
+  .layer-chart-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    margin-bottom: 16px;
+  }
+  .layer-trend-chart-card {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    background: var(--color-background-secondary);
+    padding: 12px;
+  }
+  .layer-trend-chart-card .chart-title {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--color-text-secondary);
+    margin-bottom: 8px;
+  }
+  .layer-trend-svg-wrap svg {
+    width: 100%; height: 180px;
+  }
+  .layer-trend-legend {
+    display: flex; gap: 14px; font-size: 11px;
+    color: var(--color-text-secondary); margin-top: 6px;
+  }
+  .layer-trend-legend-item { display: flex; align-items: center; gap: 4px; }
+  .layer-trend-legend-swatch {
+    width: 10px; height: 3px; border-radius: 1px;
+  }
+
+  .summary-section {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    background: var(--color-background-primary);
+    padding: 20px 24px;
+    margin-bottom: 12px;
+  }
+  .summary-section-title {
+    font-size: 13px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--color-text-secondary);
+    margin-bottom: 14px;
+  }
+
+  /* Overall table */
+  .summary-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  .summary-table th, .summary-table td {
+    padding: 8px 12px; text-align: center;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+  }
+  .summary-table th {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--color-text-tertiary);
+    background: var(--color-background-secondary);
+  }
+  .summary-table th:first-child, .summary-table td:first-child {
+    text-align: left; font-weight: 500;
+  }
+  .summary-table td.best-cell { font-weight: 700; }
+  .summary-table tr:last-child td { border-bottom: none; }
+  .summary-table .metric-arrow {
+    font-size: 10px; color: var(--color-text-tertiary); margin-left: 2px;
+  }
+  .summary-table .wilcoxon-row td {
+    font-size: 11px; color: var(--color-text-tertiary);
+    border-top: 1.5px solid var(--color-border-secondary);
+    padding-top: 6px;
+  }
+  .summary-table .wilcoxon-row span {
+    display: inline-block;
+    margin: 2px 8px 2px 0;
+    padding: 2px 6px;
+    border-radius: 999px;
+  }
+  .summary-table .wilcoxon-row span.sig {
+    color: #1f6f31;
+    font-weight: 700;
+    background: rgba(43, 138, 62, 0.14);
+    box-shadow: inset 0 0 0 1px rgba(43, 138, 62, 0.28);
+  }
+  @media (prefers-color-scheme: dark) {
+    .summary-table .wilcoxon-row span.sig {
+      color: #8ce99a;
+      background: rgba(105, 219, 124, 0.18);
+      box-shadow: inset 0 0 0 1px rgba(105, 219, 124, 0.34);
+    }
+  }
+
+  /* Model color dots */
+  .model-dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; margin-right: 4px; vertical-align: middle;
+  }
+  .model-dot.instruct { background: #E24B4A; }
+  .model-dot.thinking { background: #d4a04a; }
+  .model-dot.instruct_30b { background: #B03A3A; }
+  .model-dot.thinking_30b { background: #A07830; }
+  .model-dot.center_bias { background: #999; }
+  .model-dot.dino { background: #378ADD; }
+
+  /* Grouped bar charts */
+  .chart-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  }
+  @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+  .metric-chart {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 12px;
+    background: var(--color-background-primary);
+  }
+  .metric-chart-title {
+    font-size: 12px; font-weight: 600; margin-bottom: 8px;
+    color: var(--color-text-primary);
+  }
+  .grouped-bar-container {
+    display: flex; align-items: flex-end; gap: 2px;
+    height: 140px; position: relative;
+    border-bottom: 1px solid var(--color-border-tertiary);
+    padding-bottom: 0;
+  }
+  .bar-group {
+    flex: 1; display: flex; align-items: flex-end; gap: 1px;
+    height: 100%; position: relative; min-width: 0;
+  }
+  .bar-group:hover { background: var(--color-background-secondary); border-radius: 2px; }
+  .gbar {
+    flex: 1; border-radius: 2px 2px 0 0;
+    min-width: 2px; transition: height 0.2s;
+    position: relative;
+  }
+  .gbar.instruct { background: #E24B4A; opacity: 0.8; }
+  .gbar.thinking { background: #d4a04a; opacity: 0.8; }
+  .gbar.center_bias { background: #999; opacity: 0.8; }
+  .gbar.dino { background: #378ADD; opacity: 0.8; }
+  .bar-group-labels {
+    display: flex; gap: 2px; margin-top: 2px;
+  }
+  .bar-group-label {
+    flex: 1; text-align: center; font-size: 9px;
+    color: var(--color-text-tertiary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chart-legend {
+    display: flex; gap: 10px; margin-top: 8px; font-size: 10px;
+    color: var(--color-text-secondary); justify-content: center;
+  }
+  .chart-legend-item { display: flex; align-items: center; gap: 3px; }
+  .chart-legend-swatch {
+    width: 8px; height: 8px; border-radius: 2px;
+  }
+  .zero-line {
+    position: absolute; left: 0; right: 0;
+    border-top: 1px dashed var(--color-border-secondary);
+    pointer-events: none;
+  }
+
+  /* Per-question table */
+  .pq-table-wrap {
+    overflow-x: auto; max-height: 60vh; overflow-y: auto;
+  }
+  .pq-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+    white-space: nowrap;
+  }
+  .pq-table th, .pq-table td {
+    padding: 6px 8px; text-align: center;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+  }
+  .pq-table th {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.03em; color: var(--color-text-tertiary);
+    background: var(--color-background-secondary);
+    position: sticky; top: 0; z-index: 2; cursor: pointer;
+  }
+  .pq-table th:hover { color: var(--color-text-primary); }
+  .pq-table th.sorted-asc::after { content: ' ▲'; }
+  .pq-table th.sorted-desc::after { content: ' ▼'; }
+  .pq-table td:first-child, .pq-table th:first-child { text-align: left; }
+  .pq-table tr:hover { background: var(--color-background-info); }
+  .pq-table tr { cursor: pointer; }
+  .pq-cell-best { font-weight: 700; }
+  .pq-cell-worst { opacity: 0.5; }
+
+  /* ── Center bias toggle ── */
+  .cb-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--color-text-secondary);
+    cursor: pointer; margin-bottom: 12px;
+  }
+  .cb-toggle input { cursor: pointer; }
+
+  /* ── Comparison view ── */
+  .comparison-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-bottom: 16px;
+  }
+  .comparison-grid .overlay-card { margin: 0; }
+  .comparison-grid .img-wrap {
+    width: 92%;
+    max-width: 680px;
+    margin: 0 auto 10px;
+  }
+  .comparison-card-controls {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .comparison-card-btn {
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 500;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 6px;
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .comparison-card-btn.active {
+    background: var(--color-text-primary);
+    color: var(--color-background-primary);
+    border-color: var(--color-text-primary);
+  }
+  .comparison-section {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    background: var(--color-background-primary);
+    padding: 20px 24px;
+    margin-bottom: 12px;
+  }
+  .comparison-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .comparison-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
+  }
+  .comparison-diagnostics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .comparison-diagnostic-card {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 12px;
+    background: var(--color-background-primary);
+  }
+  .comparison-diagnostic-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .comparison-diagnostic-block + .comparison-diagnostic-block {
+    margin-top: 12px;
+  }
+  .comparison-diagnostic-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-tertiary);
+    margin-bottom: 6px;
+  }
+  .comparison-ratio-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .comparison-trend-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .comparison-trend-card {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 10px;
+    background: var(--color-background-secondary);
+  }
+  .comparison-trend-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 6px;
+  }
+  .comparison-trend-chart svg {
+    display: block;
+    width: 100%;
+    height: 58px;
+  }
+  .comparison-trend-stats {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--color-text-secondary);
+  }
+  .comparison-layer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 12px;
+  }
+  .comparison-layer-card {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 12px;
+    background: var(--color-background-secondary);
+  }
+  .comparison-layer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .comparison-layer-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .comparison-layer-models {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  @media (max-width: 900px) {
+    .comparison-diagnostics-grid,
+    .comparison-trend-grid,
+    .comparison-layer-models,
+    .comparison-text-pair {
+      grid-template-columns: 1fr;
+    }
+  }
+  .comparison-metrics {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  .comparison-metrics th, .comparison-metrics td {
+    padding: 8px 12px; text-align: center;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+  }
+  .comparison-metrics th {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--color-text-tertiary);
+    background: var(--color-background-secondary);
+  }
+  .comparison-metrics th:first-child, .comparison-metrics td:first-child {
+    text-align: left; font-weight: 500;
+  }
+  .comparison-metrics tr:last-child td { border-bottom: none; }
+  .delta-positive { color: #2b8a3e; font-weight: 600; }
+  .delta-negative { color: #e03131; font-weight: 600; }
+  .delta-neutral { color: var(--color-text-tertiary); }
+  @media (prefers-color-scheme: dark) {
+    .delta-positive { color: #69db7c; }
+    .delta-negative { color: #ff8787; }
+  }
+  .comparison-text-pair {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  }
+  .comparison-text-box {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    background: var(--color-background-primary);
+    padding: 14px 16px;
+    max-height: 30vh;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .comparison-text-box .section-label { margin-bottom: 8px; }
+
+  /* ── Token Match sub-mode ── */
+  .comparison-submode-toggle {
+    display: flex; background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md); overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .comparison-submode-toggle button {
+    padding: 5px 14px; font-size: 12px; font-weight: 500; cursor: pointer;
+    border: none; background: transparent; color: var(--color-text-secondary);
+    transition: all 0.15s;
+  }
+  .comparison-submode-toggle button.active {
+    background: var(--color-text-primary); color: var(--color-background-primary);
+  }
+  .token-match-layout {
+    display: flex; gap: 16px; margin-bottom: 16px;
+  }
+  .token-match-list {
+    width: 220px; flex-shrink: 0;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    background: var(--color-background-primary);
+    max-height: 75vh; overflow-y: auto; padding: 8px 0;
+  }
+  .token-match-list-header {
+    padding: 8px 14px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--color-text-tertiary);
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    margin-bottom: 4px;
+  }
+  .match-item {
+    padding: 6px 14px; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.12s; border-left: 3px solid transparent;
+  }
+  .match-item:hover { background: var(--color-background-info); }
+  .match-item.selected {
+    background: #378ADD22; border-left-color: #378ADD;
+  }
+  .match-item .match-text {
+    font-weight: 600; color: var(--color-text-primary);
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  }
+  .match-item .match-indices {
+    font-size: 10px; color: var(--color-text-tertiary); margin-left: auto; white-space: nowrap;
+  }
+  .token-match-heatmaps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .token-match-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  }
+  .token-match-row .overlay-card { margin: 0; }
+  .token-match-row .img-wrap {
+    position: relative; width: 92%; max-width: 680px; margin: 0 auto 10px;
+    aspect-ratio: 16/9; background: var(--color-background-secondary); overflow: hidden;
+  }
+  .bbox-canvas {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .token.matched { background: #378ADD11; border-bottom: 2px solid #378ADD; }
+  .token.active-match {
+    background: #378ADD33; outline: 2px solid #378ADD; font-weight: 600;
+  }
+  .token.unmatched-dim { opacity: 0.35; }
+  .token-match-empty {
+    padding: 40px; text-align: center; font-size: 14px;
+    color: var(--color-text-tertiary);
+  }
+  #tm-text-contributions {
+    flex: 1; min-width: 0;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    background: var(--color-background-primary);
+    max-height: 75vh; overflow-y: auto; padding: 12px 16px;
+  }
+  .tm-contrib-header {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--color-text-tertiary);
+    padding-bottom: 8px; border-bottom: 0.5px solid var(--color-border-tertiary);
+    margin-bottom: 12px;
+  }
+  .tm-contrib-model { margin-bottom: 16px; }
+  .tm-contrib-model:last-child { margin-bottom: 0; }
+  .tm-contrib-model .dual-cols { padding: 8px; }
+  .tm-metrics-section {
+    margin-top: 8px; padding: 10px 14px;
+    background: var(--color-background-secondary); border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-tertiary);
+  }
+  .tm-metrics-title {
+    font-size: 11px; font-weight: 600; color: var(--color-text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+  }
+  .tm-metrics-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  .tm-metrics-table th {
+    text-align: center; font-weight: 500; color: var(--color-text-tertiary);
+    padding: 4px 8px; border-bottom: 1px solid var(--color-border-tertiary);
+    font-size: 11px;
+  }
+  .tm-metrics-table th:first-child { text-align: left; width: 80px; }
+  .tm-metrics-table td {
+    text-align: center; padding: 5px 8px; color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .tm-metrics-table td:first-child {
+    text-align: left; font-weight: 500; color: var(--color-text-secondary);
+  }
+  .tm-metrics-table tr + tr td { border-top: 0.5px solid var(--color-border-tertiary); }
+  .tm-metric-better { color: #2ea043 !important; font-weight: 600; }
+  @media (max-width: 900px) {
+    .token-match-layout { flex-direction: column; }
+    .token-match-list { width: 100%; max-height: 200px; }
+    #tm-text-contributions { max-height: none; }
+    .token-match-row { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 
-<div class="top-bar">
-  <select id="question-select" onchange="switchQuestion(this.value)">
-    <option value="">Loading questions...</option>
-  </select>
-  <div class="model-toggle">
-    <div class="toggle-btn">
-      <button id="btn-instruct" onclick="switchModel('instruct')" disabled>Instruct</button>
-      <button id="btn-thinking" class="active" onclick="switchModel('thinking')">Thinking</button>
+<div class="toolbar-card">
+  <!-- Row 1: Title + Detail/Summary toggle -->
+  <div class="toolbar-row header-row">
+    <p class="toolbar-title">DriVQA dataset visualization on Qwen3-VL-8B models</p>
+    <div class="pill-toggle">
+      <button id="btn-mode-detail" class="active" onclick="switchMode('detail')">Detail</button>
+      <button id="btn-mode-summary" onclick="switchMode('summary')">Summary</button>
     </div>
   </div>
-</div>
-
-<div class="expected-row" style="display:flex;align-items:center;justify-content:space-between;">
-  <div><strong>Expected:</strong> <span id="expected-text">...</span></div>
-  <div style="display:flex;align-items:center;gap:8px;font-size:12px;">
-    <span style="color:var(--color-text-tertiary);font-weight:500;">Layer:</span>
-    <select id="layer-select" onchange="switchLayer(this.value)" style="font-size:12px;padding:3px 8px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);color:var(--color-text-primary);">
-      <option value="all">All (avg)</option>
+  <!-- Row 2: Question select + Model select -->
+  <div class="toolbar-row">
+    <select id="question-select" class="toolbar-select question-select" onchange="switchQuestion(this.value)">
+      <option value="">Loading questions...</option>
     </select>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="toolbar-label">Model:</span>
+      <select id="model-select" class="toolbar-select model-select" onchange="switchModel(this.value)">
+        <option value="thinking">Thinking</option>
+        <option value="instruct">Instruct</option>
+        <option value="thinking_30b" style="display:none">Thinking (30B)</option>
+        <option value="instruct_30b" style="display:none">Instruct (30B)</option>
+        <option value="llm_thinking" style="display:none">LLM Thinking</option>
+        <option value="llm_instruct" style="display:none">LLM Instruct</option>
+        <option value="comparison">Compare</option>
+      </select>
+    </div>
+  </div>
+  <!-- Row 3: Expected + contextual controls (mode, layer, etc.) -->
+  <div class="toolbar-row options-row" id="toolbar-options-row">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="toolbar-label">Expected:</span>
+      <span class="expected-badge" id="expected-text" style="color:var(--color-text-danger);background:var(--color-background-danger);">...</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;" id="toolbar-right-controls">
+      <!-- Compare controls (shown only in Compare mode) -->
+      <div id="toolbar-compare-controls" style="display:none;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="toolbar-label">Mode:</span>
+          <div class="pill-toggle sm">
+            <button id="btn-submode-sidebyside-tb" class="active" onclick="switchComparisonSubMode('sidebyside')">Side-by-side</button>
+            <button id="btn-submode-tokenmatch-tb" onclick="switchComparisonSubMode('tokenmatch')">Token match</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:6px;">
+          <span class="toolbar-label">Data:</span>
+          <div class="pill-toggle sm">
+            <button id="btn-datamode-vision" class="active" onclick="switchComparisonDataMode('vision')">Vision</button>
+            <button id="btn-datamode-text" onclick="switchComparisonDataMode('text')">Text</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span class="toolbar-label">Layer:</span>
+        <select id="layer-select" class="toolbar-select layer-select" onchange="switchLayer(this.value)">
+          <option value="all">All (avg)</option>
+        </select>
+      </div>
+    </div>
   </div>
 </div>
 
 <div class="main-content" id="main-content">
   <div class="left-col" id="left-col" style="width: 380px; flex-shrink: 0;">
-    <div class="overlay-card" id="card-human">
-      <div class="card-label">
-        <div class="dot dot-human"></div> Human attention heatmap
-        <span class="collapse-toggle" onclick="toggleCollapse('card-human')" title="Toggle visibility">&#9660;</span>
-      </div>
-      <div class="collapsible-content" id="card-human-body">
-        <div class="img-wrap">
-          <img id="img-human" src="" alt="">
-          <canvas id="canvas-human"></canvas>
-        </div>
-      </div>
-    </div>
     <div class="overlay-card" id="card-attn">
       <div class="card-label">
-        <div class="dot dot-attn"></div> Attention overlay
+        <div class="dot dot-attn"></div> Attention Heatmap (per token)
+        <span class="info-icon">i<span class="info-tooltip">Causal attention weights from the VLM transformer, showing where the model attends when generating each token. Aggregated across all heads.</span></span>
         <div class="card-norm-toggle" id="norm-toggle-attn">
-          <button class="active" onclick="switchNormMode('attn','relative')">Rel</button>
+          <button class="active" onclick="switchNormMode('attn','clamp')">2-98%</button>
+          <button onclick="switchNormMode('attn','relative')">Rel</button>
           <button onclick="switchNormMode('attn','sqrt')">Sqrt</button>
-          <button onclick="switchNormMode('attn','clamp')">2-98%</button>
         </div>
+        <button class="detection-toggle" id="detection-toggle-btn" onclick="toggleDetections()" title="Show/hide object detection bounding boxes">Box</button>
         <span class="collapse-toggle" onclick="toggleCollapse('card-attn')" title="Toggle visibility">&#9660;</span>
       </div>
       <div class="collapsible-content" id="card-attn-body">
         <div class="img-wrap">
           <img id="img-attn" src="" alt="">
           <canvas id="canvas-attn"></canvas>
+          <canvas id="canvas-attn-bbox" class="bbox-overlay"></canvas>
         </div>
       </div>
     </div>
     <div class="overlay-card" id="card-tam">
       <div class="card-label">
-        <div class="dot dot-tam"></div> TAM overlay
+        <div class="dot dot-tam"></div> TAM Heatmap (per token)
+        <span class="info-icon">i<span class="info-tooltip">Token Attribution Map — measures each image patch's contribution to the generated token via activation-based attribution (gradient-free).</span></span>
         <div class="card-norm-toggle" id="norm-toggle-tam">
-          <button class="active" onclick="switchNormMode('tam','relative')">Rel</button>
+          <button class="active" onclick="switchNormMode('tam','clamp')">2-98%</button>
+          <button onclick="switchNormMode('tam','relative')">Rel</button>
           <button onclick="switchNormMode('tam','sqrt')">Sqrt</button>
-          <button onclick="switchNormMode('tam','clamp')">2-98%</button>
         </div>
         <span class="collapse-toggle" onclick="toggleCollapse('card-tam')" title="Toggle visibility">&#9660;</span>
       </div>
@@ -528,10 +1247,24 @@
         </div>
       </div>
     </div>
+    <div class="overlay-card" id="card-human">
+      <div class="card-label">
+        <div class="dot dot-human"></div> Human attention heatmap (full sequence)
+        <span class="info-icon">i<span class="info-tooltip">Aggregated eye-tracking fixation density from 34 human participants viewing this driving scene, smoothed with a Gaussian kernel.</span></span>
+        <span class="collapse-toggle" style="margin-left:auto" onclick="toggleCollapse('card-human')" title="Toggle visibility">&#9660;</span>
+      </div>
+      <div class="collapsible-content" id="card-human-body">
+        <div class="img-wrap">
+          <img id="img-human" src="" alt="">
+          <canvas id="canvas-human"></canvas>
+        </div>
+      </div>
+    </div>
     <div class="overlay-card" id="card-dino">
       <div class="card-label">
-        <div class="dot dot-dino"></div> DINOv2 attention
-        <span class="collapse-toggle" onclick="toggleCollapse('card-dino')" title="Toggle visibility">&#9660;</span>
+        <div class="dot dot-dino"></div> DINOv2 attention heatmap (full sequence)
+        <span class="info-icon">i<span class="info-tooltip">Self-attention from DINOv2 vision encoder — a pure vision baseline with no language conditioning, showing salient image regions.</span></span>
+        <span class="collapse-toggle" style="margin-left:auto" onclick="toggleCollapse('card-dino')" title="Toggle visibility">&#9660;</span>
       </div>
       <div class="collapsible-content" id="card-dino-body">
         <div class="img-wrap">
@@ -548,6 +1281,7 @@
     <div class="token-section" id="token-section">
       <div class="section-label">
         Generated sequence
+        <span class="info-icon">i<span class="info-tooltip">The full token sequence generated by the model. Click any token to see its attention and TAM heatmaps on the left.</span></span>
         <span id="correctness-badge" class="correctness-badge" style="display:none"></span>
         <span class="collapse-toggle" onclick="toggleCollapse('token-section')" title="Toggle visibility">&#9660;</span>
       </div>
@@ -556,6 +1290,18 @@
           <div class="phase-legend-item"><div class="phase-swatch" style="background:var(--color-thinking)"></div> Thinking</div>
           <div class="phase-legend-item"><div class="phase-swatch" style="background:var(--color-answer)"></div> Answer</div>
         </div>
+        <div class="moving-avg-controls" id="moving-avg-controls">
+          <label>
+            <input type="checkbox" id="moving-avg-toggle" onchange="toggleMovingAvg()">
+            <span>Moving Avg</span>
+          </label>
+          <span id="moving-avg-size-label" style="display:none;color:var(--color-text-tertiary)">
+            Window:
+            <input type="range" id="moving-avg-slider" min="2" max="50" value="5"
+                   oninput="setMovingAvgWindow(parseInt(this.value))">
+            <span id="moving-avg-value">5</span>
+          </span>
+        </div>
         <div class="token-flow" id="token-flow"></div>
       </div>
     </div>
@@ -563,27 +1309,355 @@
     <div class="bar-section" id="bar-section">
       <div class="bar-header">
         <div class="section-label" style="margin-bottom:0">
-          Token contributions &rarr; <span id="bar-target" style="font-weight:500;color:var(--color-text-primary)"></span>
+          <span id="detail-panel-title">Token contributions</span>
+          <span class="info-icon">i<span class="info-tooltip">Top-K tokens (or image patches) that contribute most to the selected token, ranked by attention weight and TAM attribution score.</span></span>
+          <span id="detail-panel-target-wrap"> &rarr; <span id="bar-target" style="font-weight:500;color:var(--color-text-primary)"></span></span>
           <span class="collapse-toggle" onclick="toggleCollapse('bar-section')" title="Toggle visibility">&#9660;</span>
         </div>
         <div class="bar-controls">
-          <div class="topk-toggle">
+          <div class="topk-toggle" id="detail-panel-mode-toggle">
+            <button id="btn-detail-panel-token" class="active" onclick="switchDetailPanelMode('token')">Token</button>
+            <button id="btn-detail-panel-layers" onclick="switchDetailPanelMode('layers')">Layers</button>
+          </div>
+          <div class="topk-toggle" id="token-topk-toggle">
             <button id="btn-top10" class="active" onclick="switchTopK(10)">Top 10</button>
             <button id="btn-top20" onclick="switchTopK(20)">Top 20</button>
             <button id="btn-topall" onclick="switchTopK(0)">All</button>
           </div>
-          <div class="legend">
+          <div class="legend" id="token-legend">
             <div class="legend-item"><div class="legend-swatch" style="background:#E24B4A"></div> Attn</div>
             <div class="legend-item"><div class="legend-swatch" style="background:#378ADD"></div> TAM</div>
           </div>
         </div>
       </div>
       <div class="collapsible-content" id="bar-section-body">
-        <div class="selected-info">Showing contributions from image patches and prior text tokens into <span class="selected-token-name" id="selected-label">...</span></div>
+        <div class="selected-info" id="detail-panel-info">Showing contributions from image patches and prior text tokens into <span class="selected-token-name" id="selected-label">...</span></div>
         <div class="bar-chart" id="bar-chart"></div>
       </div>
     </div>
   </div>
+</div>
+
+<div id="summary-view" style="display:none" class="summary-view">
+  <div class="summary-controls">
+    <div class="summary-controls-left">
+      <div class="toggle-btn" id="summary-metrics-toggle">
+        <button class="active" onclick="switchSummaryMetricsMode('questions')">Question Metrics</button>
+        <button onclick="switchSummaryMetricsMode('layers')">Layer Metrics</button>
+      </div>
+    </div>
+    <label class="cb-toggle" id="cb-toggle-wrap">
+      <input type="checkbox" id="cb-show-center-bias" onchange="toggleCenterBias()"> Show center bias
+    </label>
+  </div>
+
+  <div id="summary-question-metrics">
+    <div class="summary-section" id="summary-overall-section">
+      <div class="summary-section-title">Overall performance (24 questions)</div>
+      <div id="summary-overall-table"></div>
+    </div>
+    <div class="summary-section" id="summary-charts-section">
+      <div class="summary-section-title">Per-question comparison</div>
+      <div class="chart-legend" id="summary-chart-legend"></div>
+      <div class="chart-grid" id="summary-charts"></div>
+    </div>
+    <div class="summary-section" id="summary-pq-section">
+      <div class="summary-section-title">Per-question details (click row to view in Detail mode)</div>
+      <div class="pq-table-wrap" id="summary-pq-table"></div>
+    </div>
+  </div>
+
+  <div id="summary-layer-metrics" style="display:none">
+    <div class="summary-section">
+      <div class="summary-section-title">Image attention share across layers</div>
+      <div class="layer-chart-grid" id="layer-trend-charts"></div>
+    </div>
+    <div class="summary-section">
+      <div class="summary-section-title">Per-layer details</div>
+      <div class="pq-table-wrap" id="layer-metrics-table"></div>
+    </div>
+  </div>
+</div>
+
+<div id="comparison-view" style="display:none">
+  <!-- Sub-mode toggle is now in the toolbar (btn-submode-*-tb); keep hidden originals for JS sync -->
+  <div class="comparison-submode-toggle" id="comparison-submode-toggle" style="display:none">
+    <button id="btn-submode-sidebyside" class="active" onclick="switchComparisonSubMode('sidebyside')">Side-by-side</button>
+    <button id="btn-submode-tokenmatch" onclick="switchComparisonSubMode('tokenmatch')">Token Match</button>
+  </div>
+
+  <div id="sidebyside-content">
+  <!-- Row 1: Human + DINOv2 -->
+  <div class="comparison-grid cmp-vision-content">
+    <div class="overlay-card">
+      <div class="card-label"><div class="dot dot-human"></div> Human Attention <span class="info-icon">i<span class="info-tooltip">Aggregated eye-tracking fixation density from 34 human participants.</span></span></div>
+      <div class="img-wrap"><img id="cmp-img-human" src="" alt=""><canvas id="cmp-canvas-human"></canvas></div>
+    </div>
+    <div class="overlay-card">
+      <div class="card-label"><div class="dot dot-dino"></div> DINOv2 Attention <span class="info-icon">i<span class="info-tooltip">Self-attention from DINOv2 vision encoder — a pure vision baseline with no language conditioning.</span></span></div>
+      <div class="img-wrap"><img id="cmp-img-dino" src="" alt=""><canvas id="cmp-canvas-dino"></canvas></div>
+    </div>
+  </div>
+  <!-- Row 2: Instruct Attn + Thinking Attn -->
+  <div class="comparison-grid cmp-vision-content">
+    <div class="overlay-card">
+      <div class="card-label">
+        <div class="dot dot-attn"></div> Instruct — Attention
+        <span class="info-icon">i<span class="info-tooltip">Causal attention heatmap from the Instruct model (direct answering, no chain-of-thought).</span></span>
+        <div class="comparison-card-controls">
+          <button type="button" class="comparison-card-btn" data-cmp-model="instruct" data-cmp-action="aggregate" onclick="toggleComparisonAggregate('instruct')">Aggregate</button>
+          <button type="button" class="comparison-card-btn" data-cmp-model="instruct" data-cmp-action="play" onclick="toggleComparisonPlayback('instruct')">Play</button>
+          <button type="button" class="detection-toggle cmp-box-toggle" onclick="toggleDetectionsCompare()" title="Show/hide detection boxes">Box</button>
+        </div>
+      </div>
+      <div class="img-wrap"><img id="cmp-img-instruct-attn" src="" alt=""><canvas id="cmp-canvas-instruct-attn"></canvas><canvas id="cmp-bbox-instruct-attn" class="bbox-overlay"></canvas></div>
+    </div>
+    <div class="overlay-card">
+      <div class="card-label">
+        <div class="dot dot-attn"></div> Thinking — Attention
+        <span class="info-icon">i<span class="info-tooltip">Causal attention heatmap from the Thinking model (chain-of-thought reasoning before answering).</span></span>
+        <div class="comparison-card-controls">
+          <button type="button" class="comparison-card-btn" data-cmp-model="thinking" data-cmp-action="aggregate" onclick="toggleComparisonAggregate('thinking')">Aggregate</button>
+          <button type="button" class="comparison-card-btn" data-cmp-model="thinking" data-cmp-action="play" onclick="toggleComparisonPlayback('thinking')">Play</button>
+          <button type="button" class="detection-toggle cmp-box-toggle" onclick="toggleDetectionsCompare()" title="Show/hide detection boxes">Box</button>
+        </div>
+      </div>
+      <div class="img-wrap"><img id="cmp-img-thinking-attn" src="" alt=""><canvas id="cmp-canvas-thinking-attn"></canvas><canvas id="cmp-bbox-thinking-attn" class="bbox-overlay"></canvas></div>
+    </div>
+  </div>
+  <!-- Row 3: Instruct TAM + Thinking TAM -->
+  <div class="comparison-grid cmp-vision-content">
+    <div class="overlay-card">
+      <div class="card-label">
+        <div class="dot dot-tam"></div> Instruct — TAM
+        <span class="info-icon">i<span class="info-tooltip">Token Attribution Map from the Instruct model — activation-based attribution showing image patch contributions.</span></span>
+        <div class="comparison-card-controls">
+          <button type="button" class="comparison-card-btn" data-cmp-model="instruct" data-cmp-action="aggregate" onclick="toggleComparisonAggregate('instruct')">Aggregate</button>
+          <button type="button" class="comparison-card-btn" data-cmp-model="instruct" data-cmp-action="play" onclick="toggleComparisonPlayback('instruct')">Play</button>
+          <button type="button" class="detection-toggle cmp-box-toggle" onclick="toggleDetectionsCompare()" title="Show/hide detection boxes">Box</button>
+        </div>
+      </div>
+      <div class="img-wrap"><img id="cmp-img-instruct-tam" src="" alt=""><canvas id="cmp-canvas-instruct-tam"></canvas><canvas id="cmp-bbox-instruct-tam" class="bbox-overlay"></canvas></div>
+    </div>
+    <div class="overlay-card">
+      <div class="card-label">
+        <div class="dot dot-tam"></div> Thinking — TAM
+        <span class="info-icon">i<span class="info-tooltip">Token Attribution Map from the Thinking model — activation-based attribution showing image patch contributions.</span></span>
+        <div class="comparison-card-controls">
+          <button type="button" class="comparison-card-btn" data-cmp-model="thinking" data-cmp-action="aggregate" onclick="toggleComparisonAggregate('thinking')">Aggregate</button>
+          <button type="button" class="comparison-card-btn" data-cmp-model="thinking" data-cmp-action="play" onclick="toggleComparisonPlayback('thinking')">Play</button>
+          <button type="button" class="detection-toggle cmp-box-toggle" onclick="toggleDetectionsCompare()" title="Show/hide detection boxes">Box</button>
+        </div>
+      </div>
+      <div class="img-wrap"><img id="cmp-img-thinking-tam" src="" alt=""><canvas id="cmp-canvas-thinking-tam"></canvas><canvas id="cmp-bbox-thinking-tam" class="bbox-overlay"></canvas></div>
+    </div>
+  </div>
+  <!-- Metrics comparison table -->
+  <div class="comparison-section cmp-vision-content">
+    <div class="comparison-section-header">
+      <div class="comparison-section-title">Compare diagnostics</div>
+      <div class="topk-toggle" id="compare-panel-mode-toggle">
+        <button id="btn-compare-panel-current" class="active" onclick="switchComparePanelMode('current')">Current layer</button>
+        <button id="btn-compare-panel-layers" onclick="switchComparePanelMode('layers')">Layers</button>
+      </div>
+    </div>
+    <div id="comparison-metrics"></div>
+  </div>
+  <!-- Side-by-side answer text -->
+  <div class="moving-avg-controls" id="cmp-moving-avg-controls" style="margin-top:8px;">
+    <label>
+      <input type="checkbox" id="cmp-moving-avg-toggle" onchange="toggleMovingAvgCompare()">
+      <span>Moving Avg</span>
+    </label>
+    <span id="cmp-moving-avg-size-label" style="display:none;color:var(--color-text-tertiary)">
+      Window:
+      <input type="range" id="cmp-moving-avg-slider" min="2" max="50" value="5"
+             oninput="setMovingAvgWindowCompare(parseInt(this.value))">
+      <span id="cmp-moving-avg-value">5</span>
+    </span>
+  </div>
+  <div class="comparison-text-pair">
+    <div class="comparison-text-box" id="cmp-text-instruct">
+      <div class="section-label"><span class="model-dot instruct"></span> Instruct</div>
+      <div class="token-flow" id="cmp-flow-instruct"></div>
+    </div>
+    <div class="comparison-text-box" id="cmp-text-thinking">
+      <div class="section-label"><span class="model-dot thinking"></span> Thinking</div>
+      <div class="token-flow" id="cmp-flow-thinking"></div>
+    </div>
+  </div>
+  <!-- LLM-only text (shown only in text data mode) -->
+  <div class="comparison-text-pair cmp-text-only-content" style="display:none;margin-top:16px;">
+    <div class="comparison-text-box" id="cmp-text-llm-instruct">
+      <div class="section-label"><span class="model-dot instruct" style="opacity:0.5"></span> LLM Instruct <span style="font-size:11px;color:var(--color-text-tertiary)">(no image)</span></div>
+      <div class="token-flow" id="cmp-flow-llm-instruct"></div>
+    </div>
+    <div class="comparison-text-box" id="cmp-text-llm-thinking">
+      <div class="section-label"><span class="model-dot thinking" style="opacity:0.5"></span> LLM Thinking <span style="font-size:11px;color:var(--color-text-tertiary)">(no image)</span></div>
+      <div class="token-flow" id="cmp-flow-llm-thinking"></div>
+    </div>
+  </div>
+  </div><!-- /sidebyside-content -->
+
+  <div id="token-match-view" style="display:none">
+    <div class="token-match-layout">
+      <div class="token-match-list" id="token-match-list">
+        <div class="token-match-list-header">Matched tokens</div>
+      </div>
+      <div class="token-match-heatmaps">
+        <!-- Row 0: Human + DINO baselines -->
+        <div class="token-match-row cmp-vision-content">
+          <div class="overlay-card">
+            <div class="card-label"><div class="dot dot-human"></div> Human Attention <span class="info-icon">i<span class="info-tooltip">Aggregated eye-tracking fixation density from 34 human participants. This is a per-question baseline (same for all tokens). Highlighted patches show the top 10% most fixated regions.</span></span></div>
+            <div class="img-wrap">
+              <img id="tm-img-human" src="" alt="">
+              <canvas id="tm-canvas-human"></canvas>
+              <canvas id="tm-bbox-human" class="bbox-canvas"></canvas>
+            </div>
+          </div>
+          <div class="overlay-card">
+            <div class="card-label"><div class="dot dot-dino"></div> DINOv2 Attention <span class="info-icon">i<span class="info-tooltip">Self-attention from DINOv2 vision encoder &mdash; a pure vision baseline with no language or question conditioning. Same for all tokens. Highlighted patches show the top 10% most salient regions.</span></span></div>
+            <div class="img-wrap">
+              <img id="tm-img-dino" src="" alt="">
+              <canvas id="tm-canvas-dino"></canvas>
+              <canvas id="tm-bbox-dino" class="bbox-canvas"></canvas>
+            </div>
+          </div>
+        </div>
+        <!-- Row 1: Instruct Attn + Thinking Attn -->
+        <div class="token-match-row cmp-vision-content">
+          <div class="overlay-card">
+            <div class="card-label"><div class="dot dot-attn"></div> Instruct &mdash; Attention <span class="info-icon">i<span class="info-tooltip">Causal attention from the Instruct model (direct answering) for the selected token. Shows which image patches the model attended to when generating this specific word. Highlighted patches are the top 10%.</span></span> <button type="button" class="detection-toggle cmp-box-toggle" onclick="toggleDetectionsCompare()" title="Show/hide detection boxes">Box</button></div>
+            <div class="img-wrap">
+              <img id="tm-img-instruct-attn" src="" alt="">
+              <canvas id="tm-canvas-instruct-attn"></canvas>
+              <canvas id="tm-bbox-instruct-attn" class="bbox-canvas"></canvas>
+              <canvas id="tm-det-instruct-attn" class="bbox-overlay"></canvas>
+            </div>
+          </div>
+          <div class="overlay-card">
+            <div class="card-label"><div class="dot dot-attn"></div> Thinking &mdash; Attention <span class="info-icon">i<span class="info-tooltip">Causal attention from the Thinking model (chain-of-thought reasoning) for the selected token. Shows which image patches the model attended to when generating this specific word. Highlighted patches are the top 10%.</span></span> <button type="button" class="detection-toggle cmp-box-toggle" onclick="toggleDetectionsCompare()" title="Show/hide detection boxes">Box</button></div>
+            <div class="img-wrap">
+              <img id="tm-img-thinking-attn" src="" alt="">
+              <canvas id="tm-canvas-thinking-attn"></canvas>
+              <canvas id="tm-bbox-thinking-attn" class="bbox-canvas"></canvas>
+              <canvas id="tm-det-thinking-attn" class="bbox-overlay"></canvas>
+            </div>
+          </div>
+        </div>
+        <!-- Row 2: TAM (toggleable, hidden by default) -->
+        <div class="token-match-row cmp-vision-content" id="tm-tam-row" style="display:none">
+          <div class="overlay-card">
+            <div class="card-label"><div class="dot dot-tam"></div> Instruct &mdash; TAM <span class="info-icon">i<span class="info-tooltip">Token Attribution Map for the Instruct model &mdash; measures each image patch's contribution to the selected token via activation-based attribution (gradient-free). Highlighted patches are the top 10%.</span></span> <button type="button" class="detection-toggle cmp-box-toggle" onclick="toggleDetectionsCompare()" title="Show/hide detection boxes">Box</button></div>
+            <div class="img-wrap">
+              <img id="tm-img-instruct-tam" src="" alt="">
+              <canvas id="tm-canvas-instruct-tam"></canvas>
+              <canvas id="tm-bbox-instruct-tam" class="bbox-canvas"></canvas>
+              <canvas id="tm-det-instruct-tam" class="bbox-overlay"></canvas>
+            </div>
+          </div>
+          <div class="overlay-card">
+            <div class="card-label"><div class="dot dot-tam"></div> Thinking &mdash; TAM <span class="info-icon">i<span class="info-tooltip">Token Attribution Map for the Thinking model &mdash; measures each image patch's contribution to the selected token via activation-based attribution (gradient-free). Highlighted patches are the top 10%.</span></span> <button type="button" class="detection-toggle cmp-box-toggle" onclick="toggleDetectionsCompare()" title="Show/hide detection boxes">Box</button></div>
+            <div class="img-wrap">
+              <img id="tm-img-thinking-tam" src="" alt="">
+              <canvas id="tm-canvas-thinking-tam"></canvas>
+              <canvas id="tm-bbox-thinking-tam" class="bbox-canvas"></canvas>
+              <canvas id="tm-det-thinking-tam" class="bbox-overlay"></canvas>
+            </div>
+          </div>
+        </div>
+        <!-- TAM toggle -->
+        <div class="cmp-vision-content" style="text-align:center;margin-top:4px;">
+          <button id="tm-tam-toggle" class="comparison-card-btn" onclick="toggleTmTam()" style="font-size:11px;padding:4px 12px;">Show TAM</button>
+        </div>
+        <!-- Metrics section -->
+        <div id="tm-metrics" class="tm-metrics-section cmp-vision-content">
+          <div class="tm-metrics-title">Spatial similarity to baselines (selected token) <span class="info-icon">i<span class="info-tooltip">Compares each model's per-token attention map to the human and DINOv2 baselines. Cosine = directional similarity of the full patch vectors. IoU&#8321;&#8320;% = overlap of the top 10% most-attended patches. IoU vs Box = overlap of top 10% attention patches with detected object bounding boxes matching the token via synonyms. Higher is better; the better model in each column is highlighted green.</span></span></div>
+          <table class="tm-metrics-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th colspan="2">vs Human</th>
+                <th colspan="2">vs DINOv2</th>
+                <th>vs Box</th>
+              </tr>
+              <tr>
+                <th></th>
+                <th>Cosine</th>
+                <th>IoU<sub>10%</sub></th>
+                <th>Cosine</th>
+                <th>IoU<sub>10%</sub></th>
+                <th>IoU<sub>10%</sub></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="model-dot instruct"></span> Instruct</td>
+                <td id="tm-m-i-h-cos">&mdash;</td>
+                <td id="tm-m-i-h-iou">&mdash;</td>
+                <td id="tm-m-i-d-cos">&mdash;</td>
+                <td id="tm-m-i-d-iou">&mdash;</td>
+                <td id="tm-m-i-box-iou">&mdash;</td>
+              </tr>
+              <tr>
+                <td><span class="model-dot thinking"></span> Thinking</td>
+                <td id="tm-m-t-h-cos">&mdash;</td>
+                <td id="tm-m-t-h-iou">&mdash;</td>
+                <td id="tm-m-t-d-cos">&mdash;</td>
+                <td id="tm-m-t-d-iou">&mdash;</td>
+                <td id="tm-m-t-box-iou">&mdash;</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <!-- Text token contributions (shown only in text data mode, sits right of match list) -->
+      <div id="tm-text-contributions" class="cmp-text-only-content" style="display:none;">
+        <div class="tm-contrib-header">Text token contributions</div>
+        <div class="tm-contrib-model">
+          <div class="section-label"><span class="model-dot instruct"></span> Instruct</div>
+          <div id="tm-text-contrib-instruct"></div>
+        </div>
+        <div class="tm-contrib-model">
+          <div class="section-label"><span class="model-dot thinking"></span> Thinking</div>
+          <div id="tm-text-contrib-thinking"></div>
+        </div>
+      </div>
+    </div>
+    <div class="moving-avg-controls" id="tm-moving-avg-controls" style="margin-top:8px;">
+      <label>
+        <input type="checkbox" id="tm-moving-avg-toggle" onchange="toggleMovingAvgCompare()">
+        <span>Moving Avg</span>
+      </label>
+      <span id="tm-moving-avg-size-label" style="display:none;color:var(--color-text-tertiary)">
+        Window:
+        <input type="range" id="tm-moving-avg-slider" min="2" max="50" value="5"
+               oninput="setMovingAvgWindowCompare(parseInt(this.value))">
+        <span id="tm-moving-avg-value">5</span>
+      </span>
+    </div>
+    <div class="comparison-text-pair">
+      <div class="comparison-text-box" id="tm-text-instruct">
+        <div class="section-label"><span class="model-dot instruct"></span> Instruct</div>
+        <div class="token-flow" id="tm-flow-instruct"></div>
+      </div>
+      <div class="comparison-text-box" id="tm-text-thinking">
+        <div class="section-label"><span class="model-dot thinking"></span> Thinking</div>
+        <div class="token-flow" id="tm-flow-thinking"></div>
+      </div>
+    </div>
+    <!-- LLM-only text (shown only in text data mode) -->
+    <div class="comparison-text-pair cmp-text-only-content" style="display:none;margin-top:16px;">
+      <div class="comparison-text-box" id="tm-text-llm-instruct">
+        <div class="section-label"><span class="model-dot instruct" style="opacity:0.5"></span> LLM Instruct <span style="font-size:11px;color:var(--color-text-tertiary)">(no image)</span></div>
+        <div class="token-flow" id="tm-flow-llm-instruct"></div>
+      </div>
+      <div class="comparison-text-box" id="tm-text-llm-thinking">
+        <div class="section-label"><span class="model-dot thinking" style="opacity:0.5"></span> LLM Thinking <span style="font-size:11px;color:var(--color-text-tertiary)">(no image)</span></div>
+        <div class="token-flow" id="tm-flow-llm-thinking"></div>
+      </div>
+    </div>
+  </div><!-- /token-match-view -->
 </div>
 
 <script>
@@ -594,8 +1668,39 @@ let currentModel = 'thinking';
 let selectedTokenIdx = 0;
 let topKLimit = 10; // 0 = all
 let currentLayer = 'all'; // 'all' or layer number as string e.g. '0', '4', ...
-const normModes = { attn: 'relative', tam: 'relative' };
+const normModes = { attn: 'clamp', tam: 'clamp' };
 const dataCache = {};  // key: "q0001_thinking" → value: parsed JSON
+let currentMode = 'detail';
+let summaryData = null;
+let summaryPqSortCol = null;
+let summaryPqSortAsc = true;
+let showCenterBias = false;
+let summaryMetricsMode = 'questions';
+let layerSummaryData = null;
+let layerTableSortCol = null;
+let layerTableSortAsc = true;
+let detailPanelMode = 'token';
+let movingAvgEnabled = false;
+let movingAvgWindowSize = 5;
+let showDetections = false;
+let showDetectionsCompare = false;
+let cmpMovingAvgEnabled = false;
+let cmpMovingAvgWindowSize = 5;
+let detailLayerAnalysisRequestId = 0;
+let comparePanelMode = 'current';
+let compareLayerAnalysisRequestId = 0;
+const comparisonSelectedTokenIdx = { instruct: null, thinking: null };
+const comparisonAggregateMode = { instruct: true, thinking: true };
+const comparisonPlaybackTimers = { instruct: null, thinking: null };
+const MODEL_COLORS = { instruct: '#E24B4A', thinking: '#d4a04a', instruct_30b: '#B03A3A', thinking_30b: '#A07830', center_bias: '#999', dino: '#378ADD' };
+const MODEL_LABELS = { instruct: 'Instruct', thinking: 'Thinking', instruct_30b: 'Instruct (30B)', thinking_30b: 'Thinking (30B)', center_bias: 'Center Bias', dino: 'DINOv2' };
+
+// Token match sub-mode state
+let comparisonSubMode = 'sidebyside';  // 'sidebyside' | 'tokenmatch'
+let comparisonDataMode = 'vision';     // 'vision' | 'text'
+let tokenMatchPairs = [];               // [{instruct: {idx, text}, thinking: {idx, text}}, ...]
+let selectedMatchIdx = 0;
+let tmShowTam = false;
 
 // Collapsed state for cards/sections
 const collapsedState = {};
@@ -622,7 +1727,15 @@ function populateQuestionDropdown() {
   manifest.questions.forEach((q, i) => {
     const opt = document.createElement('option');
     opt.value = i;
-    opt.textContent = `Q${i + 1} [${q.image_id}]: ${q.question_text}`;
+    let label = `Q${i + 1} [${q.image_id}]: ${q.question_text}`;
+    const wrong = [];
+    for (const [model, data] of Object.entries(q.models || {})) {
+      if (data.is_correct === false) {
+        wrong.push(model.charAt(0).toUpperCase() + model.slice(1));
+      }
+    }
+    if (wrong.length) label += ` (${wrong.join(', ')}: Incorrect)`;
+    opt.textContent = label;
     select.appendChild(opt);
   });
 }
@@ -747,10 +1860,18 @@ async function switchQuestion(idx) {
   document.getElementById('expected-text').textContent = q.expected_answer;
   document.getElementById('question-select').value = currentQIdx;
 
-  // Update model toggle availability
-  const hasInstruct = !!q.models.instruct;
-  document.getElementById('btn-instruct').disabled = !hasInstruct;
-  if (!q.models[currentModel]) {
+  // Update model dropdown options
+  const modelSelect = document.getElementById('model-select');
+  const modelKeys = ['thinking', 'instruct', 'llm_thinking', 'llm_instruct', 'thinking_30b', 'instruct_30b'];
+  for (const m of modelKeys) {
+    const opt = modelSelect.querySelector(`option[value="${m}"]`);
+    if (opt) {
+      const hasModel = !!q.models[m];
+      opt.disabled = !hasModel;
+      opt.style.display = hasModel ? '' : 'none';
+    }
+  }
+  if (currentModel !== 'comparison' && !q.models[currentModel]) {
     currentModel = Object.keys(q.models)[0];
   }
   updateModelButtons();
@@ -771,17 +1892,45 @@ async function switchQuestion(idx) {
   updateCorrectnessBadge(q);
 
   // Load precomputed data
-  selectedTokenIdx = 0;
-  document.getElementById('token-flow').innerHTML = '<div class="loading">Loading...</div>';
-  await loadPrecomputed(q.id, currentModel, currentLayer);
-  renderTokens();
+  if (currentModel === 'comparison') {
+    resetComparisonSelections();
+    await renderComparison();
+  } else {
+    selectedTokenIdx = 0;
+    document.getElementById('token-flow').innerHTML = '<div class="loading">Loading...</div>';
+    await loadPrecomputed(q.id, currentModel, currentLayer);
+    renderTokens();
+  }
 }
 
 async function switchModel(model) {
   const q = manifest.questions[currentQIdx];
+  if (model === 'comparison') {
+    currentModel = 'comparison';
+    resetComparisonSelections();
+    updateModelButtons();
+    document.getElementById('main-content').style.display = 'none';
+    document.getElementById('comparison-view').style.display = 'block';
+    // Ensure correct sub-mode visibility
+    document.getElementById('sidebyside-content').style.display = comparisonSubMode === 'sidebyside' ? 'block' : 'none';
+    document.getElementById('token-match-view').style.display = comparisonSubMode === 'tokenmatch' ? 'block' : 'none';
+    ['', '-tb'].forEach(suffix => {
+      const sbs = document.getElementById(`btn-submode-sidebyside${suffix}`);
+      const tm = document.getElementById(`btn-submode-tokenmatch${suffix}`);
+      if (sbs) sbs.className = comparisonSubMode === 'sidebyside' ? 'active' : '';
+      if (tm) tm.className = comparisonSubMode === 'tokenmatch' ? 'active' : '';
+    });
+    // Re-apply data mode visibility
+    switchComparisonDataMode(comparisonDataMode);
+    await renderComparison();
+    return;
+  }
   if (!q.models[model]) return;
+  stopAllComparisonPlayback();
   currentModel = model;
   updateModelButtons();
+  document.getElementById('comparison-view').style.display = 'none';
+  document.getElementById('main-content').style.display = 'flex';
   updateCorrectnessBadge(q);
   selectedTokenIdx = 0;
   await loadPrecomputed(q.id, currentModel, currentLayer);
@@ -808,14 +1957,21 @@ function populateLayerDropdown(q) {
 async function switchLayer(layer) {
   currentLayer = layer;
   const q = manifest.questions[currentQIdx];
-  await loadPrecomputed(q.id, currentModel, currentLayer);
-  renderOverlays();
-  renderBars();
+  if (currentModel === 'comparison') {
+    await renderComparison();
+  } else {
+    await loadPrecomputed(q.id, currentModel, currentLayer);
+    renderOverlays();
+    renderDetailPanel();
+  }
 }
 
 function updateModelButtons() {
-  document.getElementById('btn-thinking').className = currentModel === 'thinking' ? 'active' : '';
-  document.getElementById('btn-instruct').className = currentModel === 'instruct' ? 'active' : '';
+  const sel = document.getElementById('model-select');
+  if (sel) sel.value = currentModel;
+  // Show/hide compare controls in toolbar row 3
+  const cmpCtrl = document.getElementById('toolbar-compare-controls');
+  if (cmpCtrl) cmpCtrl.style.display = currentModel === 'comparison' ? 'contents' : 'none';
 }
 
 function switchTopK(k) {
@@ -824,6 +1980,61 @@ function switchTopK(k) {
   document.getElementById('btn-top20').className = k === 20 ? 'active' : '';
   document.getElementById('btn-topall').className = k === 0 ? 'active' : '';
   renderBars();
+}
+
+function switchDetailPanelMode(mode) {
+  detailPanelMode = mode;
+  renderDetailPanel();
+}
+
+function switchComparePanelMode(mode) {
+  comparePanelMode = mode;
+  renderComparisonMetrics(
+    manifest.questions[currentQIdx],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'instruct', currentLayer)],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'thinking', currentLayer)]
+  );
+}
+
+function updateComparePanelModeControls() {
+  document.getElementById('btn-compare-panel-current').className = comparePanelMode === 'current' ? 'active' : '';
+  document.getElementById('btn-compare-panel-layers').className = comparePanelMode === 'layers' ? 'active' : '';
+}
+
+function renderDetailPanel() {
+  if (currentModel === 'comparison') return;
+  const isLayerMode = detailPanelMode === 'layers';
+  document.getElementById('btn-detail-panel-token').className = isLayerMode ? '' : 'active';
+  document.getElementById('btn-detail-panel-layers').className = isLayerMode ? 'active' : '';
+  document.getElementById('token-topk-toggle').style.display = isLayerMode ? 'none' : 'flex';
+  document.getElementById('token-legend').style.display = isLayerMode ? 'none' : 'flex';
+  document.getElementById('detail-panel-title').textContent = isLayerMode ? 'Layer analysis' : 'Token contributions';
+  document.getElementById('detail-panel-target-wrap').style.display = isLayerMode ? 'none' : 'inline';
+  updateDetailPanelInfo();
+  if (isLayerMode) renderLayerAnalysis();
+  else renderBars();
+}
+
+function updateDetailPanelInfo() {
+  const info = document.getElementById('detail-panel-info');
+  const selTok = getTokens()[selectedTokenIdx];
+  const isWindowed = movingAvgEnabled && movingAvgWindowSize > 1 && currentMode === 'detail';
+  const wStart = Math.max(0, selectedTokenIdx - movingAvgWindowSize + 1);
+
+  if (isWindowed) {
+    document.getElementById('bar-target').textContent = selTok ? `avg[${wStart}..${selectedTokenIdx}] (w=${movingAvgWindowSize})` : '';
+  } else {
+    document.getElementById('bar-target').textContent = selTok ? `"${selTok.text.trim()}" [${selectedTokenIdx}]` : '';
+  }
+
+  if (detailPanelMode === 'layers') {
+    const tokenLabel = selTok ? `${selTok.text} [${selectedTokenIdx}]` : '—';
+    info.innerHTML = `Comparing image ↔ text ratio and token-generation trends across layers for <span class="selected-token-name">${currentModel}</span>. Highlight token: <span class="selected-token-name">${tokenLabel}</span>`;
+  } else if (isWindowed) {
+    info.innerHTML = `Showing <strong>moving average</strong> (window ${movingAvgWindowSize}, tokens ${wStart}–${selectedTokenIdx}) of image patch and text token contributions<span class="grounding-badge" id="grounding-badge" style="display:none"></span>`;
+  } else {
+    info.innerHTML = `Showing contributions from image patches and prior text tokens into <span class="selected-token-name">${selTok ? `${selTok.text} [${selectedTokenIdx}]` : '...'}</span><span class="grounding-badge" id="grounding-badge" style="display:none"></span>`;
+  }
 }
 
 function switchNormMode(type, mode) {
@@ -857,6 +2068,494 @@ function updateCorrectnessBadge(q) {
 function getTokens() {
   const q = manifest.questions[currentQIdx];
   return q.models[currentModel]?.generated_tokens || [];
+}
+
+function getComparisonTokens(model) {
+  const q = manifest.questions[currentQIdx];
+  return q.models[model]?.generated_tokens || [];
+}
+
+function getComparisonSelectableTokenIndexes(model) {
+  const tokens = getComparisonTokens(model);
+  return tokens.map((_, i) => i);
+}
+
+function getComparisonDefaultTokenIndex(model) {
+  const tokens = getComparisonTokens(model);
+  const answerTokenIdxs = tokens
+    .map((t, i) => t.phase === 'answer' ? i : -1)
+    .filter(i => i !== -1);
+  if (answerTokenIdxs.length) return answerTokenIdxs[answerTokenIdxs.length - 1];
+  return tokens.length ? tokens.length - 1 : -1;
+}
+
+function ensureComparisonSelectedToken(model) {
+  const selectable = getComparisonSelectableTokenIndexes(model);
+  if (!selectable.length) {
+    comparisonSelectedTokenIdx[model] = -1;
+    return -1;
+  }
+  const current = comparisonSelectedTokenIdx[model];
+  if (selectable.includes(current)) return current;
+  const fallback = getComparisonDefaultTokenIndex(model);
+  comparisonSelectedTokenIdx[model] = fallback;
+  return fallback;
+}
+
+function stopComparisonPlayback(model) {
+  if (comparisonPlaybackTimers[model]) {
+    window.clearInterval(comparisonPlaybackTimers[model]);
+    comparisonPlaybackTimers[model] = null;
+  }
+}
+
+function stopAllComparisonPlayback() {
+  stopComparisonPlayback('instruct');
+  stopComparisonPlayback('thinking');
+}
+
+function resetComparisonSelections() {
+  stopAllComparisonPlayback();
+  comparisonSelectedTokenIdx.instruct = null;
+  comparisonSelectedTokenIdx.thinking = null;
+  comparisonAggregateMode.instruct = true;
+  comparisonAggregateMode.thinking = true;
+  updateComparisonControls('instruct');
+  updateComparisonControls('thinking');
+  tokenMatchPairs = [];
+  selectedMatchIdx = 0;
+}
+
+function updateComparisonControls(model) {
+  const aggregateOn = comparisonAggregateMode[model];
+  const isPlaying = !!comparisonPlaybackTimers[model];
+  document.querySelectorAll(`[data-cmp-model="${model}"][data-cmp-action="aggregate"]`).forEach(btn => {
+    btn.classList.toggle('active', aggregateOn);
+    btn.title = aggregateOn ? 'Showing aggregate heatmap' : 'Showing selected token heatmap';
+  });
+  document.querySelectorAll(`[data-cmp-model="${model}"][data-cmp-action="play"]`).forEach(btn => {
+    btn.classList.toggle('active', isPlaying);
+    btn.textContent = isPlaying ? 'Pause' : 'Play';
+  });
+}
+
+function toggleComparisonAggregate(model) {
+  comparisonAggregateMode[model] = !comparisonAggregateMode[model];
+  if (comparisonAggregateMode[model]) stopComparisonPlayback(model);
+  else ensureComparisonSelectedToken(model);
+  updateComparisonControls(model);
+  renderComparisonText(manifest.questions[currentQIdx]);
+  const [gridH, gridW] = manifest.questions[currentQIdx].patch_grid;
+  renderComparisonModelOverlays(model, null, gridH, gridW);
+  renderComparisonMetrics(
+    manifest.questions[currentQIdx],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'instruct', currentLayer)],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'thinking', currentLayer)]
+  );
+}
+
+function stepComparisonPlayback(model) {
+  const indexes = getComparisonSelectableTokenIndexes(model);
+  if (!indexes.length) {
+    stopComparisonPlayback(model);
+    updateComparisonControls(model);
+    return;
+  }
+  const currentPos = indexes.indexOf(comparisonSelectedTokenIdx[model]);
+  const nextPos = currentPos === -1 ? 0 : (currentPos + 1) % indexes.length;
+  comparisonSelectedTokenIdx[model] = indexes[nextPos];
+  renderComparisonText(manifest.questions[currentQIdx]);
+  const [gridH, gridW] = manifest.questions[currentQIdx].patch_grid;
+  renderComparisonModelOverlays(model, null, gridH, gridW);
+  renderComparisonMetrics(
+    manifest.questions[currentQIdx],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'instruct', currentLayer)],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'thinking', currentLayer)]
+  );
+}
+
+function toggleComparisonPlayback(model) {
+  if (comparisonPlaybackTimers[model]) {
+    stopComparisonPlayback(model);
+    updateComparisonControls(model);
+    renderComparisonText(manifest.questions[currentQIdx]);
+    renderComparisonMetrics(
+      manifest.questions[currentQIdx],
+      dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'instruct', currentLayer)],
+      dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'thinking', currentLayer)]
+    );
+    return;
+  }
+  const indexes = getComparisonSelectableTokenIndexes(model);
+  if (!indexes.length) return;
+  const wasAggregate = comparisonAggregateMode[model];
+  comparisonAggregateMode[model] = false;
+  if (wasAggregate) comparisonSelectedTokenIdx[model] = indexes[0];
+  else ensureComparisonSelectedToken(model);
+  updateComparisonControls(model);
+  renderComparisonText(manifest.questions[currentQIdx]);
+  const [gridH, gridW] = manifest.questions[currentQIdx].patch_grid;
+  renderComparisonModelOverlays(model, null, gridH, gridW);
+  renderComparisonMetrics(
+    manifest.questions[currentQIdx],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'instruct', currentLayer)],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'thinking', currentLayer)]
+  );
+  comparisonPlaybackTimers[model] = window.setInterval(() => stepComparisonPlayback(model), 350);
+  updateComparisonControls(model);
+}
+
+// ── Moving Average ──────────────────────────────────────────────────
+function toggleMovingAvg() {
+  movingAvgEnabled = document.getElementById('moving-avg-toggle').checked;
+  document.getElementById('moving-avg-size-label').style.display =
+    movingAvgEnabled ? 'inline' : 'none';
+  updateSelection();
+}
+
+function setMovingAvgWindow(size) {
+  movingAvgWindowSize = size;
+  document.getElementById('moving-avg-value').textContent = size;
+  updateSelection();
+}
+
+function getWindowedData(precomputed, selectedIdx, windowSize) {
+  const start = Math.max(0, selectedIdx - windowSize + 1);
+  const end = selectedIdx;
+  const count = end - start + 1;
+
+  const firstTd = precomputed.token_data[start];
+  const patchLen = firstTd.patch_attention.length;
+  const avgPatchAttn = new Float64Array(patchLen);
+  const avgPatchTam = new Float64Array(firstTd.patch_tam.length);
+
+  for (let i = start; i <= end; i++) {
+    const td = precomputed.token_data[i];
+    for (let j = 0; j < patchLen; j++) {
+      avgPatchAttn[j] += td.patch_attention[j];
+    }
+    const tamLen = Math.min(td.patch_tam.length, avgPatchTam.length);
+    for (let j = 0; j < tamLen; j++) {
+      avgPatchTam[j] += td.patch_tam[j];
+    }
+  }
+  for (let j = 0; j < patchLen; j++) avgPatchAttn[j] /= count;
+  for (let j = 0; j < avgPatchTam.length; j++) avgPatchTam[j] /= count;
+
+  // Text contributions from the last token in the window
+  const lastTd = precomputed.token_data[end];
+  return {
+    patch_attention: Array.from(avgPatchAttn),
+    patch_tam: Array.from(avgPatchTam),
+    text_attention: lastTd.text_attention,
+    text_tam: lastTd.text_tam,
+  };
+}
+
+// ── Detection Overlay ──────────────────────────────────────────────
+const SYNONYM_MAP = {
+  'vehicle': ['vehicle', 'car', 'van', 'suv', 'truck', 'bus', 'motorcycle'],
+  'vehicles': ['vehicle', 'car', 'van', 'suv', 'truck', 'bus', 'motorcycle'],
+  'car': ['vehicle', 'car', 'van', 'suv', 'truck'],
+  'cars': ['vehicle', 'car', 'van', 'suv', 'truck'],
+  'truck': ['vehicle', 'truck'],
+  'trucks': ['vehicle', 'truck'],
+  'bus': ['vehicle', 'bus'],
+  'motorcycle': ['vehicle', 'motorcycle'],
+  'bicycle': ['bicycle'],
+  'pedestrian': ['pedestrian', 'person'],
+  'pedestrians': ['pedestrian', 'person'],
+  'person': ['pedestrian', 'person'],
+  'people': ['pedestrian', 'person'],
+  'tree': ['tree'],
+  'trees': ['tree'],
+  'building': ['building', 'store', 'restaurant'],
+  'store': ['store', 'building', 'restaurant'],
+  'restaurant': ['restaurant', 'store', 'building'],
+  'road': ['road', 'lane'],
+  'lane': ['lane', 'road'],
+  'sidewalk': ['sidewalk', 'crosswalk'],
+  'crosswalk': ['crosswalk', 'sidewalk'],
+  'traffic': ['traffic light', 'traffic sign'],
+  'sign': ['traffic sign', 'stop sign'],
+  'snow': ['snow'],
+  'parking': ['parking space', 'parking lot'],
+};
+
+function toggleDetections() {
+  showDetections = !showDetections;
+  const btn = document.getElementById('detection-toggle-btn');
+  btn.className = 'detection-toggle' + (showDetections ? ' active' : '');
+  renderOverlays();
+}
+
+function toggleDetectionsCompare() {
+  showDetectionsCompare = !showDetectionsCompare;
+  // Sync all Box toggle buttons
+  document.querySelectorAll('.cmp-box-toggle').forEach(btn => {
+    btn.className = 'detection-toggle cmp-box-toggle' + (showDetectionsCompare ? ' active' : '');
+  });
+  if (comparisonSubMode === 'tokenmatch') {
+    renderTokenMatchHeatmaps();
+  } else {
+    const q = manifest.questions[currentQIdx];
+    const [gridH, gridW] = q.patch_grid;
+    renderComparisonModelOverlays('instruct', null, gridH, gridW);
+    renderComparisonModelOverlays('thinking', null, gridH, gridW);
+  }
+}
+
+function syncMovingAvgCompareUI() {
+  const show = cmpMovingAvgEnabled ? 'inline' : 'none';
+  // Sync both sidebyside and tokenmatch controls
+  ['cmp', 'tm'].forEach(prefix => {
+    const toggle = document.getElementById(`${prefix}-moving-avg-toggle`);
+    if (toggle) toggle.checked = cmpMovingAvgEnabled;
+    const label = document.getElementById(`${prefix}-moving-avg-size-label`);
+    if (label) label.style.display = show;
+    const slider = document.getElementById(`${prefix}-moving-avg-slider`);
+    if (slider) slider.value = cmpMovingAvgWindowSize;
+    const val = document.getElementById(`${prefix}-moving-avg-value`);
+    if (val) val.textContent = cmpMovingAvgWindowSize;
+  });
+}
+
+function toggleMovingAvgCompare() {
+  cmpMovingAvgEnabled = !cmpMovingAvgEnabled;
+  syncMovingAvgCompareUI();
+  refreshComparisonOverlays();
+}
+
+function setMovingAvgWindowCompare(size) {
+  cmpMovingAvgWindowSize = size;
+  syncMovingAvgCompareUI();
+  refreshComparisonOverlays();
+}
+
+function refreshComparisonOverlays() {
+  const q = manifest.questions[currentQIdx];
+  if (comparisonSubMode === 'tokenmatch') {
+    renderTokenMatchHeatmaps();
+    renderTokenMatchText(q);
+  } else {
+    const [gridH, gridW] = q.patch_grid;
+    renderComparisonModelOverlays('instruct', null, gridH, gridW);
+    renderComparisonModelOverlays('thinking', null, gridH, gridW);
+    renderComparisonText(q);
+  }
+}
+
+// Render detection boxes on a comparison/token-match canvas
+function renderDetectionBoxesOn(canvasId, refCanvasId, tokenText) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const refCanvas = document.getElementById(refCanvasId);
+  canvas.width = refCanvas ? refCanvas.width : 1;
+  canvas.height = refCanvas ? refCanvas.height : 1;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!showDetectionsCompare) return;
+
+  const q = manifest.questions[currentQIdx];
+  const detections = q.detections;
+  if (!detections || detections.length === 0) return;
+
+  const matched = matchTokenToDetections(tokenText || '', detections);
+  const matchedLabels = new Set(matched.map(d => d.label));
+
+  const w = canvas.width;
+  const h = canvas.height;
+
+  for (const det of detections) {
+    const [x1, y1, x2, y2] = det.bbox_normalized;
+    const px1 = x1 * w, py1 = y1 * h;
+    const pw = (x2 - x1) * w, ph = (y2 - y1) * h;
+    const isMatched = matchedLabels.has(det.label);
+
+    if (isMatched) {
+      ctx.strokeStyle = '#48bb78';
+      ctx.lineWidth = 2.5;
+      ctx.fillStyle = 'rgba(72, 187, 120, 0.15)';
+      ctx.fillRect(px1, py1, pw, ph);
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+    }
+    ctx.strokeRect(px1, py1, pw, ph);
+
+    const label = `${det.label} ${(det.confidence * 100).toFixed(0)}%`;
+    ctx.font = '10px sans-serif';
+    const tm = ctx.measureText(label);
+    const lh = 12;
+    ctx.fillStyle = isMatched ? 'rgba(72,187,120,0.85)' : 'rgba(0,0,0,0.55)';
+    ctx.fillRect(px1, py1 - lh - 2, tm.width + 6, lh + 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, px1 + 3, py1 - 3);
+  }
+}
+
+// Compute IoU between top-K% of attention and detection bounding box mask
+function topKBoxIoU(patches, detections, tokenText, gridH, gridW, topPct) {
+  topPct = topPct || 0.10;
+  if (!patches || patches.length === 0 || !detections || detections.length === 0) return null;
+
+  const matched = matchTokenToDetections(tokenText || '', detections);
+  if (matched.length === 0) return null;
+
+  // Build union box mask
+  const boxMask = new Uint8Array(gridH * gridW);
+  for (const det of matched) {
+    const [x1, y1, x2, y2] = det.bbox_normalized;
+    const rStart = Math.max(0, Math.floor(y1 * gridH));
+    const rEnd = Math.min(gridH, Math.ceil(y2 * gridH));
+    const cStart = Math.max(0, Math.floor(x1 * gridW));
+    const cEnd = Math.min(gridW, Math.ceil(x2 * gridW));
+    for (let r = rStart; r < rEnd; r++) {
+      for (let c = cStart; c < cEnd; c++) {
+        boxMask[r * gridW + c] = 1;
+      }
+    }
+  }
+
+  // Top-K patches from attention
+  const k = Math.max(1, Math.ceil(patches.length * topPct));
+  const topSet = new Set(
+    patches.map((v, i) => ({v, i})).sort((a, b) => b.v - a.v).slice(0, k).map(d => d.i)
+  );
+
+  // Box mask indices
+  const boxSet = new Set();
+  for (let i = 0; i < boxMask.length; i++) {
+    if (boxMask[i]) boxSet.add(i);
+  }
+
+  let intersection = 0;
+  for (const idx of topSet) {
+    if (boxSet.has(idx)) intersection++;
+  }
+  const union = topSet.size + boxSet.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function matchTokenToDetections(tokenText, detections) {
+  if (!detections || detections.length === 0) return [];
+  const normalized = tokenText.trim().toLowerCase();
+  if (!normalized) return [];
+  const synonyms = SYNONYM_MAP[normalized] || [normalized];
+  return detections.filter(d => {
+    const dl = d.label.toLowerCase();
+    return synonyms.some(s => dl.includes(s) || s.includes(dl));
+  });
+}
+
+function computeGroundingRatio(patchAttention, matchedDetections, gridH, gridW) {
+  if (!matchedDetections || matchedDetections.length === 0) return null;
+  let totalAttn = 0;
+  for (let i = 0; i < patchAttention.length; i++) totalAttn += patchAttention[i];
+  if (totalAttn === 0) return 0;
+
+  // Build union mask from matched bboxes
+  const mask = new Uint8Array(gridH * gridW);
+  for (const det of matchedDetections) {
+    const [x1, y1, x2, y2] = det.bbox_normalized;
+    const rStart = Math.max(0, Math.floor(y1 * gridH));
+    const rEnd = Math.min(gridH, Math.ceil(y2 * gridH));
+    const cStart = Math.max(0, Math.floor(x1 * gridW));
+    const cEnd = Math.min(gridW, Math.ceil(x2 * gridW));
+    for (let r = rStart; r < rEnd; r++) {
+      for (let c = cStart; c < cEnd; c++) {
+        mask[r * gridW + c] = 1;
+      }
+    }
+  }
+
+  let inBoxAttn = 0;
+  for (let i = 0; i < patchAttention.length; i++) {
+    if (mask[i]) inBoxAttn += patchAttention[i];
+  }
+  return inBoxAttn / totalAttn;
+}
+
+function renderDetectionBoxes() {
+  const canvas = document.getElementById('canvas-attn-bbox');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  // Match canvas size to the attention canvas
+  const attnCanvas = document.getElementById('canvas-attn');
+  canvas.width = attnCanvas.width;
+  canvas.height = attnCanvas.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!showDetections) return;
+
+  const q = manifest.questions[currentQIdx];
+  const detections = q.detections;
+  if (!detections || detections.length === 0) return;
+
+  const tokens = getTokens();
+  const selTok = tokens[selectedTokenIdx];
+  const tokenText = selTok ? selTok.text : '';
+  const matched = matchTokenToDetections(tokenText, detections);
+  const matchedLabels = new Set(matched.map(d => d.label));
+
+  const w = canvas.width;
+  const h = canvas.height;
+
+  for (const det of detections) {
+    const [x1, y1, x2, y2] = det.bbox_normalized;
+    const px1 = x1 * w, py1 = y1 * h;
+    const pw = (x2 - x1) * w, ph = (y2 - y1) * h;
+    const isMatched = matchedLabels.has(det.label);
+
+    if (isMatched) {
+      ctx.strokeStyle = '#48bb78';
+      ctx.lineWidth = 2.5;
+      ctx.fillStyle = 'rgba(72, 187, 120, 0.15)';
+      ctx.fillRect(px1, py1, pw, ph);
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+    }
+    ctx.strokeRect(px1, py1, pw, ph);
+
+    // Label
+    const label = `${det.label} ${(det.confidence * 100).toFixed(0)}%`;
+    ctx.font = '11px sans-serif';
+    const tm = ctx.measureText(label);
+    const lh = 14;
+    const bgColor = isMatched ? 'rgba(72,187,120,0.85)' : 'rgba(0,0,0,0.55)';
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(px1, py1 - lh - 2, tm.width + 6, lh + 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, px1 + 3, py1 - 3);
+  }
+
+  // Grounding ratio badge
+  const badge = document.getElementById('grounding-badge');
+  if (badge) {
+    const [gridH, gridW] = q.patch_grid;
+    const key = getCacheKey(q.id, currentModel, currentLayer);
+    const precomputed = dataCache[key];
+    if (precomputed && precomputed.token_data[selectedTokenIdx] && matched.length > 0) {
+      let td;
+      if (movingAvgEnabled && movingAvgWindowSize > 1) {
+        td = getWindowedData(precomputed, selectedTokenIdx, movingAvgWindowSize);
+      } else {
+        td = precomputed.token_data[selectedTokenIdx];
+      }
+      const ratio = computeGroundingRatio(td.patch_attention, matched, gridH, gridW);
+      if (ratio !== null) {
+        badge.textContent = `${(ratio * 100).toFixed(1)}% in box`;
+        badge.style.display = 'inline';
+      } else {
+        badge.style.display = 'none';
+      }
+    } else {
+      badge.style.display = 'none';
+    }
+  }
 }
 
 function renderTokens() {
@@ -900,6 +2599,25 @@ function renderTokens() {
 
   if (selectedTokenIdx >= tokens.length) selectedTokenIdx = tokens.length - 1;
   if (selectedTokenIdx < 0) selectedTokenIdx = 0;
+
+  // Update moving average slider max
+  const slider = document.getElementById('moving-avg-slider');
+  if (slider) {
+    slider.max = Math.min(tokens.length, 100);
+    if (movingAvgWindowSize > tokens.length) {
+      movingAvgWindowSize = Math.min(5, tokens.length);
+      slider.value = movingAvgWindowSize;
+      document.getElementById('moving-avg-value').textContent = movingAvgWindowSize;
+    }
+  }
+
+  // Hide/show detection toggle based on whether detections exist
+  const q = manifest.questions[currentQIdx];
+  const detBtn = document.getElementById('detection-toggle-btn');
+  if (detBtn) {
+    detBtn.style.display = (q.detections && q.detections.length > 0) ? 'inline' : 'none';
+  }
+
   updateSelection();
 }
 
@@ -912,18 +2630,24 @@ function selectToken(idx) {
 function updateSelection() {
   const tokens = getTokens();
   const spans = document.querySelectorAll('#token-flow .token');
+
+  // Compute window range for moving average
+  let windowStart = selectedTokenIdx;
+  if (movingAvgEnabled && movingAvgWindowSize > 1 && currentMode === 'detail') {
+    windowStart = Math.max(0, selectedTokenIdx - movingAvgWindowSize + 1);
+  }
+
   spans.forEach((s, i) => {
     // Remove state classes but keep phase class
-    s.classList.remove('past', 'selected', 'future');
-    if (i < selectedTokenIdx) s.classList.add('past');
+    s.classList.remove('past', 'selected', 'future', 'in-window');
+    if (i < windowStart) s.classList.add('past');
+    else if (i >= windowStart && i < selectedTokenIdx) s.classList.add('in-window');
     else if (i === selectedTokenIdx) s.classList.add('selected');
     else s.classList.add('future');
   });
-  const selTok = tokens[selectedTokenIdx];
-  document.getElementById('selected-label').textContent = selTok ? `${selTok.text} [${selectedTokenIdx}]` : '...';
-  document.getElementById('bar-target').textContent = selTok ? `"${selTok.text.trim()}" [${selectedTokenIdx}]` : '';
+  updateDetailPanelInfo();
   renderOverlays();
-  renderBars();
+  renderDetailPanel();
 }
 
 // ── Jet colormap (matches matplotlib plt.cm.jet) ──────────────────
@@ -952,7 +2676,8 @@ function percentile(arr, pct) {
 }
 
 // ── Heatmap rendering ──────────────────────────────────────────────
-// normMode: 'clamp' = percentile 2-95 (human, DINO)
+// normMode: 'clamp' = percentile 2-98 with min-max scaling
+//           'clipmax' = percentile 2-98 clipping with max normalization
 //           'relative' = max-normalize v/max
 //           'sqrt' = sqrt(v/max) — boosts low values
 //           'absolute' = raw values, no rescaling (faint when attention is low)
@@ -960,7 +2685,8 @@ function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha, normMode) {
   const canvas = document.getElementById(canvasId);
   const img = document.getElementById(imgId);
 
-  const renderW = img && img.naturalWidth > 0 ? Math.min(img.naturalWidth, 800) : 800;
+  const maxRenderW = (canvasId.startsWith('cmp-canvas-') || canvasId.startsWith('tm-canvas-')) ? 680 : 800;
+  const renderW = img && img.naturalWidth > 0 ? Math.min(img.naturalWidth, maxRenderW) : maxRenderW;
   const renderH = Math.round(renderW * gridH / gridW);
   canvas.width = renderW;
   canvas.height = renderH;
@@ -977,7 +2703,7 @@ function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha, normMode) {
   let normed;
   const pMax = Math.max(...patches, 0);
   if (normMode === 'clamp') {
-    // Percentile clamping (2–95) — for human & DINO aggregate maps
+    // Percentile clamping (2–98) with min-max scaling
     const lo = percentile(patches, 2);
     const hi = percentile(patches, 98);
     const clamped = patches.map(v => Math.max(lo, Math.min(hi, v)));
@@ -985,6 +2711,13 @@ function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha, normMode) {
     const cMax = Math.max(...clamped);
     const range = cMax - cMin || 1;
     normed = clamped.map(v => (v - cMin) / range);
+  } else if (normMode === 'clipmax') {
+    // Percentile clipping (2–98) with max normalization
+    const lo = percentile(patches, 2);
+    const hi = percentile(patches, 98);
+    const clamped = patches.map(v => Math.max(lo, Math.min(hi, v)));
+    const clippedMax = Math.max(...clamped, 0);
+    normed = clippedMax > 0 ? clamped.map(v => v / clippedMax) : clamped.map(() => 0);
   } else if (normMode === 'sqrt') {
     // Sqrt of max-normalized — boosts low values, good middle ground
     normed = pMax > 0 ? patches.map(v => Math.sqrt(v / pMax)) : patches.map(() => 0);
@@ -1015,6 +2748,13 @@ function drawHeatmap(canvasId, imgId, patches, gridH, gridW, alpha, normMode) {
   ctx.globalAlpha = alpha;
   ctx.drawImage(offscreen, 0, 0, renderW, renderH);
   ctx.globalAlpha = 1.0;
+}
+
+function clearCanvas(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  canvas.width = 1;
+  canvas.height = 1;
+  canvas.getContext('2d').clearRect(0, 0, 1, 1);
 }
 
 function renderHumanHeatmap(q) {
@@ -1057,12 +2797,16 @@ function renderOverlays() {
       c.width = 1; c.height = 1;
       c.getContext('2d').clearRect(0, 0, 1, 1);
     });
+    renderDetectionBoxes();
     return;
   }
 
-  const td = precomputed.token_data[selectedTokenIdx];
+  const td = (movingAvgEnabled && movingAvgWindowSize > 1 && currentMode === 'detail')
+    ? getWindowedData(precomputed, selectedTokenIdx, movingAvgWindowSize)
+    : precomputed.token_data[selectedTokenIdx];
   drawHeatmap('canvas-attn', 'img-attn', td.patch_attention, gridH, gridW, 0.5, normModes.attn);
   drawHeatmap('canvas-tam', 'img-tam', td.patch_tam, gridH, gridW, 0.5, normModes.tam);
+  renderDetectionBoxes();
 }
 
 // ── Bar chart rendering ────────────────────────────────────────────
@@ -1079,7 +2823,9 @@ function renderBars() {
     return;
   }
 
-  const td = precomputed.token_data[selectedTokenIdx];
+  const td = (movingAvgEnabled && movingAvgWindowSize > 1 && currentMode === 'detail')
+    ? getWindowedData(precomputed, selectedTokenIdx, movingAvgWindowSize)
+    : precomputed.token_data[selectedTokenIdx];
 
   // Compute image-to-text ratio
   const imgAttnSum = td.patch_attention.length > 0
@@ -1291,9 +3037,1720 @@ function createSingleBarRow(label, barPct, pctStr, type, side) {
   return row;
 }
 
+// ── Summary mode ──────────────────────────────────────────────────
+async function switchMode(mode) {
+  currentMode = mode;
+  document.getElementById('btn-mode-detail').className = mode === 'detail' ? 'active' : '';
+  document.getElementById('btn-mode-summary').className = mode === 'summary' ? 'active' : '';
+
+  // Toolbar rows 2 & 3 are detail-only
+  const row2 = document.getElementById('question-select')?.closest('.toolbar-row');
+  const row3 = document.getElementById('toolbar-options-row');
+
+  if (mode === 'summary') {
+    stopAllComparisonPlayback();
+    document.getElementById('main-content').style.display = 'none';
+    document.getElementById('comparison-view').style.display = 'none';
+    if (row2) row2.style.display = 'none';
+    if (row3) row3.style.display = 'none';
+    document.getElementById('summary-view').style.display = 'block';
+    if (summaryMetricsMode === 'questions') {
+      if (!summaryData) {
+        document.getElementById('summary-overall-table').innerHTML = '<div class="loading">Loading summary data...</div>';
+        try {
+          const resp = await fetch('data/summary_metrics.json?v=' + Date.now());
+          summaryData = await resp.json();
+        } catch (e) {
+          document.getElementById('summary-overall-table').innerHTML = '<div class="loading">Failed to load summary_metrics.json</div>';
+          return;
+        }
+      }
+      renderSummaryTable();
+      renderPerQuestionCharts();
+      renderPerQuestionTable();
+    }
+    // Restore sub-mode toggle state
+    switchSummaryMetricsMode(summaryMetricsMode);
+  } else {
+    // Detail mode
+    document.getElementById('summary-view').style.display = 'none';
+    if (row2) row2.style.display = '';
+    if (row3) row3.style.display = '';
+    if (currentModel === 'comparison') {
+      document.getElementById('main-content').style.display = 'none';
+      document.getElementById('comparison-view').style.display = 'block';
+    } else {
+      document.getElementById('comparison-view').style.display = 'none';
+      document.getElementById('main-content').style.display = 'flex';
+    }
+  }
+}
+
+function getVisibleModels() {
+  if (!summaryData) return [];
+  const models = summaryData.models.filter(m => m !== 'center_bias');
+  return showCenterBias ? [...models, 'center_bias'] : models;
+}
+
+function toggleCenterBias() {
+  showCenterBias = document.getElementById('cb-show-center-bias').checked;
+  renderSummaryTable();
+  renderPerQuestionCharts();
+  renderPerQuestionTable();
+}
+
+function renderSummaryTable() {
+  const d = summaryData;
+  const models = getVisibleModels();
+  const container = document.getElementById('summary-overall-table');
+  let html = '<table class="summary-table"><thead><tr><th>Metric</th>';
+  for (const m of models) {
+    html += `<th><span class="model-dot ${m}"></span>${MODEL_LABELS[m]}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (const metric of d.metrics) {
+    const info = d.metric_info[metric];
+    const arrow = info.higher_better ? '↑' : '↓';
+    const vals = models.map(m => d.overall[m][metric].mean);
+    const bestIdx = info.higher_better
+      ? vals.indexOf(Math.max(...vals))
+      : vals.indexOf(Math.min(...vals));
+
+    html += `<tr><td>${metric} <span class="metric-arrow">${arrow}</span></td>`;
+    models.forEach((m, i) => {
+      const s = d.overall[m][metric];
+      const cls = i === bestIdx ? 'best-cell' : '';
+      html += `<td class="${cls}">${s.mean.toFixed(4)} <span style="color:var(--color-text-tertiary);font-size:11px">± ${s.std.toFixed(4)}</span></td>`;
+    });
+    html += '</tr>';
+  }
+
+  // Wilcoxon rows
+  const pairs = Object.keys(d.wilcoxon);
+  for (const pair of pairs) {
+    const label = pair.replace(/_/g, ' ').replace('vs', 'vs.');
+    html += `<tr class="wilcoxon-row"><td style="text-align:left;font-size:11px;">${label} (p)</td>`;
+    const pvals = d.metrics.map(metric => {
+      const w = d.wilcoxon[pair][metric];
+      if (!w || w.p === null) return '—';
+      const sig = w.p < 0.05;
+      return `<span class="${sig ? 'sig' : ''}">${metric}: ${w.p < 0.001 ? w.p.toExponential(1) : w.p.toFixed(4)}</span>`;
+    }).join('  ');
+    html += `<td colspan="${models.length}" style="text-align:left;font-size:11px;">${pvals}</td>`;
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function renderPerQuestionCharts() {
+  const d = summaryData;
+  const models = getVisibleModels();
+  const chartsContainer = document.getElementById('summary-charts');
+  chartsContainer.innerHTML = '';
+
+  // Legend
+  const legendEl = document.getElementById('summary-chart-legend');
+  legendEl.innerHTML = models.map(m =>
+    `<div class="chart-legend-item"><div class="chart-legend-swatch" style="background:${MODEL_COLORS[m]}"></div> ${MODEL_LABELS[m]}</div>`
+  ).join('');
+
+  for (const metric of d.metrics) {
+    const info = d.metric_info[metric];
+    const arrow = info.higher_better ? '↑' : '↓';
+    const chart = document.createElement('div');
+    chart.className = 'metric-chart';
+
+    const title = document.createElement('div');
+    title.className = 'metric-chart-title';
+    title.textContent = `${metric} (${arrow} better)`;
+    chart.appendChild(title);
+
+    // Compute value range across all questions & models
+    let allVals = [];
+    d.per_question.forEach(pq => {
+      models.forEach(m => {
+        if (pq.metrics[m]) allVals.push(pq.metrics[m][metric]);
+      });
+    });
+    const minVal = Math.min(...allVals, 0);
+    const maxVal = Math.max(...allVals, 0);
+    const range = maxVal - minVal || 1;
+    const hasNeg = minVal < 0;
+
+    const barContainer = document.createElement('div');
+    barContainer.className = 'grouped-bar-container';
+    barContainer.style.position = 'relative';
+
+    // Zero line for metrics that can go negative
+    if (hasNeg) {
+      const zeroPct = ((0 - minVal) / range) * 100;
+      const zeroLine = document.createElement('div');
+      zeroLine.className = 'zero-line';
+      zeroLine.style.bottom = zeroPct + '%';
+      barContainer.appendChild(zeroLine);
+    }
+
+    d.per_question.forEach((pq, qi) => {
+      const group = document.createElement('div');
+      group.className = 'bar-group';
+      group.title = `Q${qi + 1}: ${pq.image_id}\n${pq.question}`;
+
+      models.forEach((m, mIdx) => {
+        const val = pq.metrics[m] ? pq.metrics[m][metric] : 0;
+        const bar = document.createElement('div');
+        bar.className = `gbar ${m}`;
+        if (hasNeg) {
+          const baseBottom = ((0 - minVal) / range) * 100;
+          if (val >= 0) {
+            const h = (val / range) * 100;
+            bar.style.height = h + '%';
+            bar.style.position = 'absolute';
+            bar.style.bottom = baseBottom + '%';
+          } else {
+            const h = (Math.abs(val) / range) * 100;
+            bar.style.height = h + '%';
+            bar.style.position = 'absolute';
+            bar.style.bottom = (baseBottom - h) + '%';
+          }
+          // Position bars side by side within group
+          const barW = 100 / models.length;
+          bar.style.left = (mIdx * barW) + '%';
+          bar.style.width = barW + '%';
+        } else {
+          const h = maxVal > 0 ? (val / maxVal) * 100 : 0;
+          bar.style.height = Math.max(h, 0.5) + '%';
+        }
+        group.appendChild(bar);
+      });
+      barContainer.appendChild(group);
+    });
+    chart.appendChild(barContainer);
+
+    // X-axis labels
+    const labelsRow = document.createElement('div');
+    labelsRow.className = 'bar-group-labels';
+    d.per_question.forEach((pq, qi) => {
+      const lbl = document.createElement('div');
+      lbl.className = 'bar-group-label';
+      lbl.textContent = `Q${qi + 1}`;
+      labelsRow.appendChild(lbl);
+    });
+    chart.appendChild(labelsRow);
+
+    chartsContainer.appendChild(chart);
+  }
+}
+
+function renderPerQuestionTable(sortCol, sortAsc) {
+  const d = summaryData;
+  const container = document.getElementById('summary-pq-table');
+
+  // Build sortable data
+  let rows = d.per_question.map((pq, qi) => ({ ...pq, qi }));
+
+  if (sortCol) {
+    rows.sort((a, b) => {
+      let va, vb;
+      if (sortCol === 'q') { va = a.qi; vb = b.qi; }
+      else if (sortCol === 'image_id') { va = a.image_id; vb = b.image_id; }
+      else {
+        // sortCol like "CC_instruct" or "CC_center_bias" or "AUC_Judd_dino"
+        // Metrics: CC, KLD, NSS, AUC_Judd — find which metric prefix matches
+        const metricKey = d.metrics.find(m => sortCol.startsWith(m + '_'));
+        const modelKey = metricKey ? sortCol.substring(metricKey.length + 1) : '';
+        va = (metricKey && a.metrics[modelKey]) ? a.metrics[modelKey][metricKey] : 0;
+        vb = (metricKey && b.metrics[modelKey]) ? b.metrics[modelKey][metricKey] : 0;
+      }
+      if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      return sortAsc ? va - vb : vb - va;
+    });
+  }
+
+  // Build header
+  let html = '<table class="pq-table"><thead><tr>';
+  const addTh = (label, col) => {
+    const cls = summaryPqSortCol === col ? (summaryPqSortAsc ? 'sorted-asc' : 'sorted-desc') : '';
+    html += `<th class="${cls}" onclick="sortPqTable('${col}')">${label}</th>`;
+  };
+  addTh('#', 'q');
+  addTh('Image', 'image_id');
+  html += '<th>Question</th><th>Correct</th>';
+  const models = getVisibleModels();
+  for (const metric of d.metrics) {
+    for (const model of models) {
+      addTh(`${metric}<br>${MODEL_LABELS[model]}`, `${metric}_${model}`);
+    }
+  }
+  html += '</tr></thead><tbody>';
+
+  for (const row of rows) {
+    html += `<tr onclick="goToDetailQuestion(${row.qi})">`;
+    html += `<td>Q${row.qi + 1}</td>`;
+    html += `<td style="font-size:11px">${row.image_id}</td>`;
+    html += `<td style="text-align:left;max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${row.question}">${row.question}</td>`;
+
+    // Correctness badges
+    const badgeLabels = { instruct: 'I', thinking: 'T', instruct_30b: 'I30', thinking_30b: 'T30' };
+    let correctHtml = '';
+    for (const [mk, label] of Object.entries(badgeLabels)) {
+      const v = row.correctness[mk];
+      if (v !== null && v !== undefined) {
+        correctHtml += `<span class="correctness-badge ${v ? 'correct' : 'incorrect'}" style="font-size:9px;padding:1px 4px;">${label}:${v ? '✓' : '✗'}</span> `;
+      }
+    }
+    html += `<td>${correctHtml}</td>`;
+
+    // Metric cells with best/worst highlighting per metric across models
+    for (const metric of d.metrics) {
+      const info = d.metric_info[metric];
+      const vals = models.map(m => row.metrics[m] ? row.metrics[m][metric] : null).filter(v => v !== null);
+      const bestVal = info.higher_better ? Math.max(...vals) : Math.min(...vals);
+      const worstVal = info.higher_better ? Math.min(...vals) : Math.max(...vals);
+      for (const model of models) {
+        const v = row.metrics[model] ? row.metrics[model][metric] : null;
+        let cls = '';
+        if (v === bestVal) cls = 'pq-cell-best';
+        else if (v === worstVal) cls = 'pq-cell-worst';
+        html += `<td class="${cls}">${v !== null ? v.toFixed(4) : '—'}</td>`;
+      }
+    }
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function sortPqTable(col) {
+  if (summaryPqSortCol === col) {
+    summaryPqSortAsc = !summaryPqSortAsc;
+  } else {
+    summaryPqSortCol = col;
+    summaryPqSortAsc = true;
+  }
+  renderPerQuestionTable(summaryPqSortCol, summaryPqSortAsc);
+}
+
+function goToDetailQuestion(qi) {
+  switchMode('detail');
+  switchQuestion(qi);
+}
+
+// ── Layer Metrics (summary sub-mode) ──────────────────────────────
+async function switchSummaryMetricsMode(mode) {
+  summaryMetricsMode = mode;
+  const btns = document.querySelectorAll('#summary-metrics-toggle button');
+  btns[0].className = mode === 'questions' ? 'active' : '';
+  btns[1].className = mode === 'layers' ? 'active' : '';
+
+  const qView = document.getElementById('summary-question-metrics');
+  const lView = document.getElementById('summary-layer-metrics');
+  const cbWrap = document.getElementById('cb-toggle-wrap');
+
+  if (mode === 'questions') {
+    qView.style.display = '';
+    lView.style.display = 'none';
+    cbWrap.style.display = '';
+  } else {
+    qView.style.display = 'none';
+    lView.style.display = '';
+    cbWrap.style.display = 'none';
+    if (!layerSummaryData) {
+      document.getElementById('layer-trend-charts').innerHTML = '<div class="loading">Loading layer summary...</div>';
+      try {
+        const resp = await fetch('data/layer_summary.json?v=' + Date.now());
+        layerSummaryData = await resp.json();
+      } catch (e) {
+        document.getElementById('layer-trend-charts').innerHTML = '<div class="loading">Failed to load layer_summary.json</div>';
+        return;
+      }
+    }
+    renderLayerTrendCharts();
+    renderLayerMetricsTable();
+  }
+}
+
+function createLayerTrendSvg(seriesArray, layerLabels) {
+  // seriesArray: [{points: [...], color: '...', label: '...'}]
+  const width = 500;
+  const height = 180;
+  const padL = 36;
+  const padR = 10;
+  const padT = 10;
+  const padB = 24;
+  const innerW = width - padL - padR;
+  const innerH = height - padT - padB;
+
+  // Compute y range from all series
+  let allVals = seriesArray.flatMap(s => s.points);
+  let minY = Math.min(...allVals, 0);
+  let maxY = Math.max(...allVals, 1);
+  // Add small padding
+  const yPad = (maxY - minY) * 0.05 || 0.05;
+  minY = Math.max(0, minY - yPad);
+  maxY = Math.min(1, maxY + yPad);
+  const yRange = maxY - minY || 1;
+
+  const n = layerLabels.length;
+
+  function toX(i) { return padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW); }
+  function toY(v) { return padT + (1 - (v - minY) / yRange) * innerH; }
+
+  // Grid lines & Y labels
+  let grid = '';
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const v = minY + (i / yTicks) * yRange;
+    const y = toY(v);
+    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${width - padR}" y2="${y.toFixed(1)}" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>`;
+    grid += `<text x="${padL - 4}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--color-text-tertiary)">${(v * 100).toFixed(0)}%</text>`;
+  }
+
+  // X labels (every 5th layer)
+  let xLabels = '';
+  for (let i = 0; i < n; i++) {
+    if (i === 0 || i === n - 1 || i % 5 === 0) {
+      xLabels += `<text x="${toX(i).toFixed(1)}" y="${height - 4}" text-anchor="middle" font-size="9" fill="var(--color-text-tertiary)">${layerLabels[i]}</text>`;
+    }
+  }
+
+  // Polylines
+  let lines = '';
+  for (const series of seriesArray) {
+    const pts = series.points.map((v, i) => `${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
+    lines += `<polyline fill="none" stroke="${series.color}" stroke-width="2" points="${pts}" />`;
+  }
+
+  // Shaded area between the two series (if 2 series)
+  let shade = '';
+  if (seriesArray.length === 2) {
+    const s0 = seriesArray[0].points;
+    const s1 = seriesArray[1].points;
+    let d = `M ${toX(0).toFixed(1)},${toY(s0[0]).toFixed(1)}`;
+    for (let i = 1; i < n; i++) d += ` L ${toX(i).toFixed(1)},${toY(s0[i]).toFixed(1)}`;
+    for (let i = n - 1; i >= 0; i--) d += ` L ${toX(i).toFixed(1)},${toY(s1[i]).toFixed(1)}`;
+    d += ' Z';
+    shade = `<path d="${d}" fill="var(--color-border-tertiary)" opacity="0.3"/>`;
+  }
+
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">${grid}${xLabels}${shade}${lines}</svg>`;
+}
+
+function renderLayerTrendCharts() {
+  const d = layerSummaryData;
+  const container = document.getElementById('layer-trend-charts');
+  container.innerHTML = '';
+
+  // Layer labels (skip "all")
+  const numericLayers = d.layers.filter(l => l !== 'all');
+
+  const charts = [
+    { title: 'Attention — Image Share by Layer', key: 'mean_attn_img_pct' },
+    { title: 'TAM — Image Share by Layer', key: 'mean_tam_img_pct' },
+  ];
+
+  for (const chart of charts) {
+    const card = document.createElement('div');
+    card.className = 'layer-trend-chart-card';
+
+    const title = document.createElement('div');
+    title.className = 'chart-title';
+    title.textContent = chart.title;
+    card.appendChild(title);
+
+    const series = d.models.map(m => ({
+      points: numericLayers.map(l => d.data[m][l] ? d.data[m][l][chart.key] : 0),
+      color: MODEL_COLORS[m],
+      label: MODEL_LABELS[m],
+    }));
+
+    const svgWrap = document.createElement('div');
+    svgWrap.className = 'layer-trend-svg-wrap';
+    svgWrap.innerHTML = createLayerTrendSvg(series, numericLayers);
+    card.appendChild(svgWrap);
+
+    // Legend
+    const legend = document.createElement('div');
+    legend.className = 'layer-trend-legend';
+    for (const s of series) {
+      legend.innerHTML += `<div class="layer-trend-legend-item"><div class="layer-trend-legend-swatch" style="background:${s.color}"></div> ${s.label}</div>`;
+    }
+    card.appendChild(legend);
+
+    container.appendChild(card);
+  }
+}
+
+function renderLayerMetricsTable(sortCol, sortAsc) {
+  const d = layerSummaryData;
+  const container = document.getElementById('layer-metrics-table');
+  const models = d.models;
+
+  // Build rows dynamically from all models
+  let rows = d.layers.map(l => {
+    const row = {
+      layer: l,
+      layerLabel: l === 'all' ? 'All (avg)' : `Layer ${l}`,
+      sortKey: l === 'all' ? -1 : parseInt(l),
+    };
+    for (const m of models) {
+      const md = (d.data[m] && d.data[m][l]) || {};
+      row[`${m}_attn`] = md.mean_attn_img_pct || 0;
+      row[`${m}_tam`] = md.mean_tam_img_pct || 0;
+      row[`${m}_attn_std`] = md.std_attn_img_pct || 0;
+      row[`${m}_tam_std`] = md.std_tam_img_pct || 0;
+    }
+    return row;
+  });
+
+  if (sortCol) {
+    rows.sort((a, b) => {
+      let va = a[sortCol], vb = b[sortCol];
+      if (sortCol === 'layer') { va = a.sortKey; vb = b.sortKey; }
+      return sortAsc ? va - vb : vb - va;
+    });
+  }
+
+  // Build columns dynamically: Layer + per-model Attn/TAM
+  const cols = [{ key: 'layer', label: 'Layer' }];
+  for (const m of models) {
+    const label = MODEL_LABELS[m] || m;
+    cols.push({ key: `${m}_attn`, label: `${label}<br>Attn Img%` });
+    cols.push({ key: `${m}_tam`, label: `${label}<br>TAM Img%` });
+  }
+
+  // Find best/worst per column (excluding 'all' row, only numeric layers)
+  const numericRows = rows.filter(r => r.layer !== 'all');
+  const colStats = {};
+  for (const col of cols) {
+    if (col.key === 'layer') continue;
+    const vals = numericRows.map(r => r[col.key]);
+    colStats[col.key] = { max: Math.max(...vals), min: Math.min(...vals) };
+  }
+
+  let html = '<table class="pq-table"><thead><tr>';
+  for (const col of cols) {
+    const cls = layerTableSortCol === col.key ? (layerTableSortAsc ? 'sorted-asc' : 'sorted-desc') : '';
+    html += `<th class="${cls}" onclick="sortLayerTable('${col.key}')">${col.label}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (const row of rows) {
+    const isAll = row.layer === 'all';
+    html += `<tr style="${isAll ? 'font-weight:600;background:var(--color-background-secondary)' : ''}">`;
+    html += `<td style="text-align:left">${row.layerLabel}</td>`;
+
+    for (const col of cols) {
+      if (col.key === 'layer') continue;
+      const v = row[col.key];
+      let cls = '';
+      if (!isAll && colStats[col.key]) {
+        if (v === colStats[col.key].max) cls = 'pq-cell-best';
+        else if (v === colStats[col.key].min) cls = 'pq-cell-worst';
+      }
+      const stdKey = col.key + '_std';
+      const stdVal = row[stdKey];
+      const stdStr = stdVal !== undefined ? ` <span style="color:var(--color-text-tertiary);font-size:10px">\u00b1${(stdVal * 100).toFixed(1)}</span>` : '';
+      html += `<td class="${cls}">${(v * 100).toFixed(1)}%${stdStr}</td>`;
+    }
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function sortLayerTable(col) {
+  if (layerTableSortCol === col) {
+    layerTableSortAsc = !layerTableSortAsc;
+  } else {
+    layerTableSortCol = col;
+    layerTableSortAsc = col === 'layer';
+  }
+  renderLayerMetricsTable(layerTableSortCol, layerTableSortAsc);
+}
+
+// ── Comparison mode ────────────────────────────────────────────────
+async function renderComparison() {
+  // Show/hide Box toggles based on detections
+  const q0 = manifest.questions[currentQIdx];
+  const hasDetections = q0.detections && q0.detections.length > 0;
+  document.querySelectorAll('.cmp-box-toggle').forEach(btn => {
+    btn.style.display = hasDetections ? 'inline' : 'none';
+  });
+
+  if (comparisonSubMode === 'tokenmatch') {
+    await renderTokenMatchView();
+    return;
+  }
+  const q = manifest.questions[currentQIdx];
+  const [gridH, gridW] = q.patch_grid;
+
+  // Set all comparison images
+  const imgIds = ['cmp-img-human', 'cmp-img-dino',
+    'cmp-img-instruct-attn', 'cmp-img-thinking-attn',
+    'cmp-img-instruct-tam', 'cmp-img-thinking-tam'];
+  imgIds.forEach(id => { document.getElementById(id).src = q.image_path; });
+
+  // Wait for images to load, then draw heatmaps
+  const waitForImg = (id) => new Promise(resolve => {
+    const img = document.getElementById(id);
+    if (img.complete && img.naturalWidth > 0) resolve();
+    else img.onload = resolve;
+  });
+
+  // Load precomputed data for both models
+  const [instrData, thinkData] = await Promise.all([
+    q.models.instruct ? loadPrecomputed(q.id, 'instruct', currentLayer) : null,
+    q.models.thinking ? loadPrecomputed(q.id, 'thinking', currentLayer) : null,
+  ]);
+
+  // Wait for all images
+  await Promise.all(imgIds.map(waitForImg));
+
+  // Human heatmap
+  if (q.human_heatmap && q.human_heatmap.length > 0) {
+    drawHeatmap('cmp-canvas-human', 'cmp-img-human', q.human_heatmap, gridH, gridW, 0.5, 'clamp');
+  }
+  // DINO heatmap
+  if (q.dino_heatmap && q.dino_heatmap.length > 0) {
+    drawHeatmap('cmp-canvas-dino', 'cmp-img-dino', q.dino_heatmap, gridH, gridW, 0.5, 'clamp');
+  }
+
+  updateComparisonControls('instruct');
+  updateComparisonControls('thinking');
+  renderComparisonText(q);
+  renderComparisonModelOverlays('instruct', instrData, gridH, gridW);
+  renderComparisonModelOverlays('thinking', thinkData, gridH, gridW);
+
+  // Token-level comparison diagnostics
+  renderComparisonMetrics(q, instrData, thinkData);
+
+  // Render LLM text flows if in text data mode
+  if (comparisonDataMode === 'text') renderLlmTextFlows();
+}
+
+function renderComparisonModelOverlays(model, precomputed, gridH, gridW) {
+  const q = manifest.questions[currentQIdx];
+  const data = precomputed || dataCache[getCacheKey(q.id, model, currentLayer)];
+  const attnCanvasId = `cmp-canvas-${model}-attn`;
+  const tamCanvasId = `cmp-canvas-${model}-tam`;
+  const attnImgId = `cmp-img-${model}-attn`;
+  const tamImgId = `cmp-img-${model}-tam`;
+  const bboxCanvasId = `cmp-bbox-${model}-attn`;
+  let patchAttention = null;
+  let patchTam = null;
+  let tokenTextForDetection = '';
+
+  if (data && data.token_data && data.token_data.length > 0) {
+    if (comparisonAggregateMode[model]) {
+      patchAttention = new Array(data.token_data[0].patch_attention.length).fill(0);
+      patchTam = new Array(data.token_data[0].patch_tam.length).fill(0);
+      data.token_data.forEach(td => {
+        td.patch_attention.forEach((v, i) => { patchAttention[i] += v; });
+        td.patch_tam.forEach((v, i) => { patchTam[i] += v; });
+      });
+    } else {
+      const selectedIdx = ensureComparisonSelectedToken(model);
+      if (cmpMovingAvgEnabled && cmpMovingAvgWindowSize > 1 && selectedIdx >= 0) {
+        const windowed = getWindowedData(data, selectedIdx, cmpMovingAvgWindowSize);
+        patchAttention = windowed.patch_attention;
+        patchTam = windowed.patch_tam;
+      } else {
+        const td = selectedIdx >= 0 ? data.token_data[selectedIdx] : null;
+        patchAttention = td ? td.patch_attention : null;
+        patchTam = td ? td.patch_tam : null;
+      }
+      // Get token text for detection matching
+      const tokens = getComparisonTokens(model);
+      if (selectedIdx >= 0 && tokens[selectedIdx]) {
+        tokenTextForDetection = tokens[selectedIdx].text;
+      }
+    }
+  }
+
+  const tamBboxCanvasId = `cmp-bbox-${model}-tam`;
+
+  if (!patchAttention || !patchTam) {
+    clearCanvas(attnCanvasId);
+    clearCanvas(tamCanvasId);
+    renderDetectionBoxesOn(bboxCanvasId, attnCanvasId, '');
+    renderDetectionBoxesOn(tamBboxCanvasId, tamCanvasId, '');
+    return;
+  }
+
+  const normMode = (comparisonAggregateMode[model] || comparisonPlaybackTimers[model]) ? 'clipmax' : 'relative';
+  drawHeatmap(attnCanvasId, attnImgId, patchAttention, gridH, gridW, 0.5, normMode);
+  drawHeatmap(tamCanvasId, tamImgId, patchTam, gridH, gridW, 0.5, normMode);
+  renderDetectionBoxesOn(bboxCanvasId, attnCanvasId, tokenTextForDetection);
+  renderDetectionBoxesOn(tamBboxCanvasId, tamCanvasId, tokenTextForDetection);
+}
+
+function sumValues(arr) {
+  return arr && arr.length ? arr.reduce((a, b) => a + b, 0) : 0;
+}
+
+function buildTokenDiagnostics(tokens, data, selectedIdx) {
+  if (!data || !data.token_data || !data.token_data.length) return null;
+  const perToken = data.token_data.map((td, idx) => {
+    const imgAttn = sumValues(td.patch_attention);
+    const textAttn = sumValues(td.text_attention);
+    const imgTam = sumValues(td.patch_tam);
+    const textTam = sumValues(td.text_tam);
+    const attnTotal = imgAttn + textAttn;
+    const tamTotal = imgTam + textTam;
+    return {
+      idx,
+      phase: tokens[idx]?.phase || 'answer',
+      tokenText: tokens[idx]?.text || '',
+      attnImgPct: attnTotal > 0 ? imgAttn / attnTotal : 0,
+      tamImgPct: tamTotal > 0 ? imgTam / tamTotal : 0,
+      imgAttn,
+      textAttn,
+      imgTam,
+      textTam,
+    };
+  });
+
+  const totals = perToken.reduce((acc, item) => {
+    acc.imgAttn += item.imgAttn;
+    acc.textAttn += item.textAttn;
+    acc.imgTam += item.imgTam;
+    acc.textTam += item.textTam;
+    return acc;
+  }, { imgAttn: 0, textAttn: 0, imgTam: 0, textTam: 0 });
+
+  const totalAttn = totals.imgAttn + totals.textAttn;
+  const totalTam = totals.imgTam + totals.textTam;
+  const current = perToken[selectedIdx] || perToken[perToken.length - 1];
+
+  return {
+    perToken,
+    overallAttnImgPct: totalAttn > 0 ? totals.imgAttn / totalAttn : 0,
+    overallTamImgPct: totalTam > 0 ? totals.imgTam / totalTam : 0,
+    current,
+  };
+}
+
+function buildComparisonDiagnostics(model, data) {
+  return buildTokenDiagnostics(getComparisonTokens(model), data, ensureComparisonSelectedToken(model));
+}
+
+function createTrendSvg(points, color, selectedIdx) {
+  if (!points.length) return '';
+  const width = 220;
+  const height = 58;
+  const padX = 6;
+  const padY = 6;
+  const innerW = width - padX * 2;
+  const innerH = height - padY * 2;
+  const coords = points.map((value, idx) => {
+    const x = padX + (points.length === 1 ? innerW / 2 : (idx / (points.length - 1)) * innerW);
+    const y = padY + (1 - value) * innerH;
+    return { x, y };
+  });
+  const polyline = coords.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const marker = (selectedIdx != null && coords[selectedIdx])
+    ? `<circle cx="${coords[selectedIdx].x.toFixed(1)}" cy="${coords[selectedIdx].y.toFixed(1)}" r="3.2" fill="${color}" stroke="white" stroke-width="1.2"></circle>`
+    : '';
+  return `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="var(--color-border-tertiary)" stroke-width="1"></line>
+      <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" stroke="var(--color-border-tertiary)" stroke-width="1"></line>
+      <polyline fill="none" stroke="${color}" stroke-width="2.2" points="${polyline}"></polyline>
+      ${marker}
+    </svg>
+  `;
+}
+
+function createTrendCard(title, values, color, selectedIdx) {
+  const card = document.createElement('div');
+  card.className = 'comparison-trend-card';
+
+  const label = document.createElement('div');
+  label.className = 'comparison-trend-label';
+  label.textContent = title;
+  card.appendChild(label);
+
+  const chart = document.createElement('div');
+  chart.className = 'comparison-trend-chart';
+  chart.innerHTML = createTrendSvg(values, color, selectedIdx);
+  card.appendChild(chart);
+
+  const stats = document.createElement('div');
+  stats.className = 'comparison-trend-stats';
+  const start = values.length ? `${(values[0] * 100).toFixed(0)}% start` : '—';
+  const end = values.length ? `${(values[values.length - 1] * 100).toFixed(0)}% end` : '—';
+  const avg = values.length ? `${(values.reduce((a, b) => a + b, 0) / values.length * 100).toFixed(0)}% avg` : '—';
+  stats.innerHTML = `<span>${start}</span><span>${avg}</span><span>${end}</span>`;
+  card.appendChild(stats);
+  return card;
+}
+
+async function renderLayerAnalysis() {
+  const chart = document.getElementById('bar-chart');
+  const q = manifest.questions[currentQIdx];
+  const qId = q.id;
+  const model = currentModel;
+  const tokens = getTokens();
+  const requestId = ++detailLayerAnalysisRequestId;
+  chart.innerHTML = '<div class="loading">Loading layer analysis...</div>';
+
+  const layerKeys = ['all', ...(q.selected_layers || []).map(String)];
+  const uniqueLayerKeys = [...new Set(layerKeys)];
+  const results = await Promise.all(uniqueLayerKeys.map(async (layerKey) => ({
+    layerKey,
+    data: await loadPrecomputed(qId, model, layerKey),
+  })));
+
+  if (requestId !== detailLayerAnalysisRequestId) return;
+  if (currentMode !== 'detail' || currentModel !== model || currentQIdx >= manifest.questions.length || manifest.questions[currentQIdx].id !== qId || detailPanelMode !== 'layers') return;
+
+  chart.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'layer-analysis-grid';
+
+  results.forEach(({ layerKey, data }) => {
+    const diag = buildTokenDiagnostics(tokens, data, selectedTokenIdx);
+    if (!diag) return;
+
+    const card = document.createElement('div');
+    card.className = 'layer-analysis-card';
+
+    const header = document.createElement('div');
+    header.className = 'layer-analysis-header';
+    const title = document.createElement('div');
+    title.className = 'layer-analysis-title';
+    title.textContent = layerKey === 'all' ? 'All (avg)' : `Layer ${layerKey}`;
+    header.appendChild(title);
+    if (String(currentLayer) === String(layerKey)) {
+      const badge = document.createElement('div');
+      badge.className = 'layer-analysis-badge';
+      badge.textContent = 'Current';
+      header.appendChild(badge);
+    }
+    card.appendChild(header);
+
+    const ratioSection = document.createElement('div');
+    ratioSection.className = 'layer-analysis-section';
+    ratioSection.innerHTML = '<div class="layer-analysis-label">Image ↔ Text Ratio</div>';
+    ratioSection.appendChild(createRatioRow('Sequence total', diag.overallAttnImgPct, diag.overallTamImgPct));
+    if (diag.current) {
+      ratioSection.appendChild(createRatioRow(`Token ${diag.current.idx}`, diag.current.attnImgPct, diag.current.tamImgPct));
+    }
+    card.appendChild(ratioSection);
+
+    const trendSection = document.createElement('div');
+    trendSection.className = 'layer-analysis-section';
+    trendSection.innerHTML = '<div class="layer-analysis-label">Change Over Token Generation</div>';
+    const trendGrid = document.createElement('div');
+    trendGrid.className = 'comparison-trend-grid';
+    trendGrid.appendChild(createTrendCard('Attention image share', diag.perToken.map(x => x.attnImgPct), '#E24B4A', diag.current?.idx));
+    trendGrid.appendChild(createTrendCard('TAM image share', diag.perToken.map(x => x.tamImgPct), '#378ADD', diag.current?.idx));
+    trendSection.appendChild(trendGrid);
+    card.appendChild(trendSection);
+
+    grid.appendChild(card);
+  });
+
+  if (!grid.children.length) {
+    chart.innerHTML = '<div class="loading">No per-layer data available for this model.</div>';
+    return;
+  }
+
+  chart.appendChild(grid);
+}
+
+function createComparisonDiagnosticCard(model, diag) {
+  const card = document.createElement('div');
+  card.className = 'comparison-diagnostic-card';
+
+  const header = document.createElement('div');
+  header.className = 'comparison-diagnostic-header';
+  header.innerHTML = `<span class="model-dot ${model.colorClass}"></span>${model.label}`;
+  card.appendChild(header);
+
+  const ratioBlock = document.createElement('div');
+  ratioBlock.className = 'comparison-diagnostic-block';
+  ratioBlock.innerHTML = '<div class="comparison-diagnostic-title">Image ↔ Text Ratio</div>';
+  const ratioStack = document.createElement('div');
+  ratioStack.className = 'comparison-ratio-stack';
+  ratioStack.appendChild(createRatioRow('Sequence total', diag.overallAttnImgPct, diag.overallTamImgPct));
+  if (diag.current) {
+    ratioStack.appendChild(createRatioRow(
+      comparisonAggregateMode[model.key] ? 'Displayed aggregate' : `Token ${diag.current.idx}`,
+      comparisonAggregateMode[model.key] ? diag.overallAttnImgPct : diag.current.attnImgPct,
+      comparisonAggregateMode[model.key] ? diag.overallTamImgPct : diag.current.tamImgPct
+    ));
+  }
+  ratioBlock.appendChild(ratioStack);
+  card.appendChild(ratioBlock);
+
+  const trendBlock = document.createElement('div');
+  trendBlock.className = 'comparison-diagnostic-block';
+  trendBlock.innerHTML = '<div class="comparison-diagnostic-title">Change Over Token Generation</div>';
+  const trendGrid = document.createElement('div');
+  trendGrid.className = 'comparison-trend-grid';
+  trendGrid.appendChild(createTrendCard('Attention image share', diag.perToken.map(x => x.attnImgPct), '#E24B4A', comparisonAggregateMode[model.key] ? null : diag.current?.idx));
+  trendGrid.appendChild(createTrendCard('TAM image share', diag.perToken.map(x => x.tamImgPct), '#378ADD', comparisonAggregateMode[model.key] ? null : diag.current?.idx));
+  trendBlock.appendChild(trendGrid);
+  card.appendChild(trendBlock);
+
+  return card;
+}
+
+async function renderComparisonLayerAnalysis(q) {
+  const container = document.getElementById('comparison-metrics');
+  const requestId = ++compareLayerAnalysisRequestId;
+  container.innerHTML = '<div class="loading">Loading compare layer analysis...</div>';
+
+  const availableModels = ['instruct', 'thinking'].filter(model => !!q.models[model]);
+  const layerKeys = ['all', ...(q.selected_layers || []).map(String)];
+  const uniqueLayerKeys = [...new Set(layerKeys)];
+  const layerData = await Promise.all(uniqueLayerKeys.map(async layerKey => {
+    const modelEntries = await Promise.all(availableModels.map(async model => ({
+      model,
+      data: await loadPrecomputed(q.id, model, layerKey),
+    })));
+    return { layerKey, modelEntries };
+  }));
+
+  if (requestId !== compareLayerAnalysisRequestId) return;
+  if (currentMode !== 'detail' || currentModel !== 'comparison' || currentQIdx >= manifest.questions.length || manifest.questions[currentQIdx].id !== q.id || comparePanelMode !== 'layers') return;
+
+  container.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'comparison-layer-grid';
+
+  for (const model of availableModels) {
+    const modelCard = document.createElement('div');
+    modelCard.className = 'comparison-layer-card';
+
+    const header = document.createElement('div');
+    header.className = 'comparison-layer-header';
+    header.innerHTML = `<div class="comparison-layer-title"><span class="model-dot ${model}"></span>${MODEL_LABELS[model]}</div>`;
+    modelCard.appendChild(header);
+
+    const sequenceSection = document.createElement('div');
+    sequenceSection.className = 'comparison-diagnostic-block';
+    sequenceSection.innerHTML = '<div class="comparison-diagnostic-title">Sequence Total By Layer</div>';
+    const sequenceStack = document.createElement('div');
+    sequenceStack.className = 'comparison-ratio-stack';
+
+    const tokenSection = document.createElement('div');
+    tokenSection.className = 'comparison-diagnostic-block';
+    tokenSection.innerHTML = '<div class="comparison-diagnostic-title">Selected Token By Layer</div>';
+    const tokenStack = document.createElement('div');
+    tokenStack.className = 'comparison-ratio-stack';
+
+    for (const { layerKey, modelEntries } of layerData) {
+      const entry = modelEntries.find(item => item.model === model);
+      if (!entry || !entry.data || !entry.data.token_data || !entry.data.token_data.length) continue;
+      const diag = buildTokenDiagnostics(getComparisonTokens(model), entry.data, ensureComparisonSelectedToken(model));
+      if (!diag) continue;
+
+      const layerLabel = layerKey === 'all' ? 'All (avg)' : `Layer ${layerKey}`;
+      const displayLabel = String(currentLayer) === String(layerKey) ? `${layerLabel} *` : layerLabel;
+      sequenceStack.appendChild(createRatioRow(displayLabel, diag.overallAttnImgPct, diag.overallTamImgPct));
+      if (diag.current) {
+        tokenStack.appendChild(createRatioRow(displayLabel, diag.current.attnImgPct, diag.current.tamImgPct));
+      }
+    }
+
+    if (!sequenceStack.children.length) continue;
+    sequenceSection.appendChild(sequenceStack);
+    modelCard.appendChild(sequenceSection);
+    if (tokenStack.children.length) {
+      tokenSection.appendChild(tokenStack);
+      modelCard.appendChild(tokenSection);
+    }
+    grid.appendChild(modelCard);
+  }
+
+  if (!grid.children.length) {
+    container.innerHTML = '<div class="loading">No per-layer comparison data available.</div>';
+    return;
+  }
+
+  container.appendChild(grid);
+}
+
+function renderComparisonCurrentDiagnostics(instrData, thinkData) {
+  const container = document.getElementById('comparison-metrics');
+  container.innerHTML = '';
+
+  const models = [
+    { key: 'instruct', label: 'Instruct', colorClass: 'instruct', data: instrData },
+    { key: 'thinking', label: 'Thinking', colorClass: 'thinking', data: thinkData },
+  ].filter(item => item.data && item.data.token_data && item.data.token_data.length);
+
+  if (!models.length) {
+    container.innerHTML = '<div class="loading">No token-level comparison data available.</div>';
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'comparison-diagnostics-grid';
+  for (const model of models) {
+    const diag = buildComparisonDiagnostics(model.key, model.data);
+    if (!diag) continue;
+    grid.appendChild(createComparisonDiagnosticCard(model, diag));
+  }
+  container.appendChild(grid);
+}
+
+function renderComparisonMetrics(q, instrData, thinkData) {
+  updateComparePanelModeControls();
+  if (comparePanelMode === 'layers') {
+    renderComparisonLayerAnalysis(q);
+    return;
+  }
+  renderComparisonCurrentDiagnostics(instrData, thinkData);
+}
+
+function renderComparisonText(q) {
+  for (const model of ['instruct', 'thinking']) {
+    const flow = document.getElementById(`cmp-flow-${model}`);
+    const tokens = q.models[model]?.generated_tokens || [];
+    const selectedIdx = ensureComparisonSelectedToken(model);
+    const selectable = new Set(getComparisonSelectableTokenIndexes(model));
+    const isNotAggregate = !comparisonAggregateMode[model];
+
+    // Compute window range for moving average highlighting
+    let windowStart = selectedIdx;
+    if (isNotAggregate && cmpMovingAvgEnabled && cmpMovingAvgWindowSize > 1 && selectedIdx >= 0) {
+      windowStart = Math.max(0, selectedIdx - cmpMovingAvgWindowSize + 1);
+    }
+
+    flow.innerHTML = '';
+    let currentPhase = null;
+    for (const [i, t] of tokens.entries()) {
+      if (t.phase !== currentPhase) {
+        currentPhase = t.phase;
+        const divider = document.createElement('span');
+        divider.className = `phase-divider ${t.phase}`;
+        divider.textContent = t.phase === 'thinking' ? 'Think' : 'Answer';
+        flow.appendChild(divider);
+      }
+      const span = document.createElement('span');
+      span.className = `token phase-${t.phase}`;
+      if (isNotAggregate && i === selectedIdx) span.classList.add('selected');
+      else if (isNotAggregate && i >= windowStart && i < selectedIdx) span.classList.add('in-window');
+      if (selectable.has(i)) {
+        span.title = 'Click to show this token heatmap';
+        span.onclick = () => selectComparisonToken(model, i);
+      } else {
+        span.classList.add('static-token');
+      }
+      span.textContent = t.text;
+      flow.appendChild(span);
+    }
+    if (tokens.length === 0) {
+      flow.innerHTML = '<span style="color:var(--color-text-tertiary)">No data</span>';
+    }
+  }
+}
+
+function selectComparisonToken(model, idx) {
+  if (!getComparisonSelectableTokenIndexes(model).includes(idx)) return;
+  stopComparisonPlayback(model);
+  comparisonAggregateMode[model] = false;
+  comparisonSelectedTokenIdx[model] = idx;
+  updateComparisonControls(model);
+  renderComparisonText(manifest.questions[currentQIdx]);
+  const [gridH, gridW] = manifest.questions[currentQIdx].patch_grid;
+  renderComparisonModelOverlays(model, null, gridH, gridW);
+  renderComparisonMetrics(
+    manifest.questions[currentQIdx],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'instruct', currentLayer)],
+    dataCache[getCacheKey(manifest.questions[currentQIdx].id, 'thinking', currentLayer)]
+  );
+}
+
+// ── Token Match sub-mode ────────────────────────────────────────────
+
+function normalizeToken(text) {
+  if (!text) return null;
+  const t = text.trim().toLowerCase();
+  if (!t || t.startsWith('<|') || t === '</think>' || t === '\n' || t === '\n\n') return null;
+  return t;
+}
+
+function getAnswerTokens(model) {
+  const q = manifest.questions[currentQIdx];
+  const modelData = q.models[model];
+  if (!modelData) return [];
+  const tokens = modelData.generated_tokens || [];
+  const regions = modelData.token_regions || {};
+  const answerStart = regions.answer_start_idx != null ? regions.answer_start_idx : 0;
+  const result = [];
+  for (let i = answerStart; i < tokens.length; i++) {
+    const normalized = normalizeToken(tokens[i].text);
+    if (normalized) {
+      result.push({ originalIdx: i, normalized, raw: tokens[i].text });
+    }
+  }
+  return result;
+}
+
+function computeLCS(seqA, seqB) {
+  const m = seqA.length, n = seqB.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (seqA[i - 1].normalized === seqB[j - 1].normalized) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  const pairs = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (seqA[i - 1].normalized === seqB[j - 1].normalized) {
+      pairs.unshift({ instruct: seqA[i - 1], thinking: seqB[j - 1] });
+      i--; j--;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return pairs;
+}
+
+function buildTokenMatchPairs() {
+  const instrTokens = getAnswerTokens('instruct');
+  const thinkTokens = getAnswerTokens('thinking');
+  tokenMatchPairs = computeLCS(instrTokens, thinkTokens);
+  selectedMatchIdx = 0;
+}
+
+function switchComparisonSubMode(mode) {
+  comparisonSubMode = mode;
+  // Sync both the in-page toggle and toolbar toggle
+  ['', '-tb'].forEach(suffix => {
+    const sbs = document.getElementById(`btn-submode-sidebyside${suffix}`);
+    const tm = document.getElementById(`btn-submode-tokenmatch${suffix}`);
+    if (sbs) sbs.className = mode === 'sidebyside' ? 'active' : '';
+    if (tm) tm.className = mode === 'tokenmatch' ? 'active' : '';
+  });
+  document.getElementById('sidebyside-content').style.display = mode === 'sidebyside' ? 'block' : 'none';
+  document.getElementById('token-match-view').style.display = mode === 'tokenmatch' ? 'block' : 'none';
+  if (mode === 'tokenmatch') {
+    renderTokenMatchView();
+  } else {
+    renderComparison();
+  }
+}
+
+function switchComparisonDataMode(mode) {
+  comparisonDataMode = mode;
+  document.getElementById('btn-datamode-vision').className = mode === 'vision' ? 'active' : '';
+  document.getElementById('btn-datamode-text').className = mode === 'text' ? 'active' : '';
+  const isText = mode === 'text';
+  // Show/hide all vision-only content in comparison view
+  document.querySelectorAll('#comparison-view .cmp-vision-content').forEach(el => {
+    el.style.display = isText ? 'none' : '';
+  });
+  // In text mode for token-match, also hide the heatmap column entirely
+  const tmHeatmaps = document.querySelector('.token-match-heatmaps');
+  if (tmHeatmaps) tmHeatmaps.style.display = isText ? 'none' : '';
+  // Show/hide LLM-only text sections
+  document.querySelectorAll('#comparison-view .cmp-text-only-content').forEach(el => {
+    el.style.display = isText ? '' : 'none';
+  });
+  // Hide/show moving avg controls (vision-related)
+  ['cmp-moving-avg-controls', 'tm-moving-avg-controls'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isText ? 'none' : '';
+  });
+  // Populate LLM text flows and text contributions when switching to text mode
+  if (isText) {
+    renderLlmTextFlows();
+    if (comparisonSubMode === 'tokenmatch' && tokenMatchPairs.length) {
+      renderTokenMatchTextContributions();
+    }
+  }
+}
+
+function renderLlmTextFlows() {
+  const q = manifest.questions[currentQIdx];
+  // Render LLM token flows for both side-by-side and token-match containers
+  for (const model of ['llm_instruct', 'llm_thinking']) {
+    const tokens = q.models[model]?.generated_tokens || [];
+    // Map model key to flow element IDs: cmp-flow-llm-instruct, tm-flow-llm-instruct, etc.
+    const suffix = model.replace('llm_', 'llm-');
+    for (const prefix of ['cmp-flow-', 'tm-flow-']) {
+      const flow = document.getElementById(prefix + suffix);
+      if (!flow) continue;
+      flow.innerHTML = '';
+      if (tokens.length === 0) {
+        flow.innerHTML = '<span style="color:var(--color-text-tertiary);font-style:italic">No LLM data for this question</span>';
+        continue;
+      }
+      let currentPhase = null;
+      for (const t of tokens) {
+        if (t.phase !== currentPhase) {
+          currentPhase = t.phase;
+          const divider = document.createElement('span');
+          divider.className = `phase-divider ${t.phase}`;
+          divider.textContent = t.phase === 'thinking' ? 'Think' : 'Answer';
+          flow.appendChild(divider);
+        }
+        const span = document.createElement('span');
+        span.className = `token phase-${t.phase}`;
+        span.textContent = t.text;
+        flow.appendChild(span);
+      }
+    }
+  }
+}
+
+async function renderTokenMatchView() {
+  const q = manifest.questions[currentQIdx];
+  const [gridH, gridW] = q.patch_grid;
+
+  // Load data for both models
+  const [instrData, thinkData] = await Promise.all([
+    q.models.instruct ? loadPrecomputed(q.id, 'instruct', currentLayer) : null,
+    q.models.thinking ? loadPrecomputed(q.id, 'thinking', currentLayer) : null,
+  ]);
+
+  if (!instrData || !thinkData) {
+    document.getElementById('token-match-list').innerHTML =
+      '<div class="token-match-list-header">Matched tokens</div>' +
+      '<div class="token-match-empty">Both models required for token matching.</div>';
+    return;
+  }
+
+  // Build match pairs
+  buildTokenMatchPairs();
+
+  if (tokenMatchPairs.length === 0) {
+    document.getElementById('token-match-list').innerHTML =
+      '<div class="token-match-list-header">Matched tokens</div>' +
+      '<div class="token-match-empty">No matching answer tokens found.</div>';
+    document.getElementById('tm-flow-instruct').innerHTML = '';
+    document.getElementById('tm-flow-thinking').innerHTML = '';
+    return;
+  }
+
+  // Set images for all panels (human, dino, attn, tam)
+  const imgIds = ['tm-img-human', 'tm-img-dino',
+    'tm-img-instruct-attn', 'tm-img-thinking-attn',
+    'tm-img-instruct-tam', 'tm-img-thinking-tam'];
+  imgIds.forEach(id => { document.getElementById(id).src = q.image_path; });
+
+  // Wait for images
+  await Promise.all(imgIds.map(id => new Promise(resolve => {
+    const img = document.getElementById(id);
+    if (img.complete && img.naturalWidth > 0) resolve();
+    else img.onload = resolve;
+  })));
+
+  // Render human + DINO baselines (static, don't change with token selection)
+  if (q.human_heatmap && q.human_heatmap.length > 0) {
+    drawHeatmap('tm-canvas-human', 'tm-img-human', q.human_heatmap, gridH, gridW, 0.5, 'clamp');
+    drawBoundingBox('tm-bbox-human', 'tm-img-human', q.human_heatmap, gridH, gridW, '#639922');
+  }
+  if (q.dino_heatmap && q.dino_heatmap.length > 0) {
+    drawHeatmap('tm-canvas-dino', 'tm-img-dino', q.dino_heatmap, gridH, gridW, 0.5, 'clamp');
+    drawBoundingBox('tm-bbox-dino', 'tm-img-dino', q.dino_heatmap, gridH, gridW, '#9B59B6');
+  }
+
+  // Sync TAM row visibility
+  document.getElementById('tm-tam-row').style.display = tmShowTam ? 'grid' : 'none';
+  document.getElementById('tm-tam-toggle').textContent = tmShowTam ? 'Hide TAM' : 'Show TAM';
+
+  renderTokenMatchList();
+  renderTokenMatchHeatmaps();
+  renderTokenMatchText(q);
+}
+
+function renderTokenMatchList() {
+  const container = document.getElementById('token-match-list');
+  let html = '<div class="token-match-list-header">Matched tokens (' + tokenMatchPairs.length + ') <span class="info-icon">i<span class="info-tooltip">Answer tokens shared between Instruct and Thinking outputs, found via Longest Common Subsequence (LCS). Click a token to compare where each model looked when generating it. I/T numbers are the token indices in each model\'s output.</span></span></div>';
+  tokenMatchPairs.forEach((pair, idx) => {
+    const selected = idx === selectedMatchIdx ? ' selected' : '';
+    html += `<div class="match-item${selected}" onclick="selectMatch(${idx})" title="Instruct token #${pair.instruct.originalIdx}, Thinking token #${pair.thinking.originalIdx}">
+      <span class="match-text">${escapeHtml(pair.instruct.raw.trim())}</span>
+      <span class="match-indices">I:${pair.instruct.originalIdx} T:${pair.thinking.originalIdx}</span>
+    </div>`;
+  });
+  container.innerHTML = html;
+  // Scroll selected into view
+  const selectedEl = container.querySelector('.match-item.selected');
+  if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest' });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+async function selectMatch(idx) {
+  if (idx < 0 || idx >= tokenMatchPairs.length) return;
+  selectedMatchIdx = idx;
+  renderTokenMatchList();
+  renderTokenMatchHeatmaps();
+  renderTokenMatchText(manifest.questions[currentQIdx]);
+  if (comparisonDataMode === 'text') renderTokenMatchTextContributions();
+}
+
+function renderTokenMatchHeatmaps() {
+  if (!tokenMatchPairs.length) return;
+  const q = manifest.questions[currentQIdx];
+  const [gridH, gridW] = q.patch_grid;
+  const pair = tokenMatchPairs[selectedMatchIdx];
+  const tokenText = pair.instruct.raw || '';
+
+  const instrData = dataCache[getCacheKey(q.id, 'instruct', currentLayer)];
+  const thinkData = dataCache[getCacheKey(q.id, 'thinking', currentLayer)];
+
+  for (const model of ['instruct', 'thinking']) {
+    const data = model === 'instruct' ? instrData : thinkData;
+    const tokenIdx = model === 'instruct' ? pair.instruct.originalIdx : pair.thinking.originalIdx;
+
+    let attnPatches = null;
+    let tamPatches = null;
+
+    if (data && data.token_data) {
+      if (cmpMovingAvgEnabled && cmpMovingAvgWindowSize > 1 && tokenIdx >= 0) {
+        const windowed = getWindowedData(data, tokenIdx, cmpMovingAvgWindowSize);
+        attnPatches = windowed.patch_attention;
+        tamPatches = windowed.patch_tam;
+      } else {
+        const td = data.token_data[tokenIdx];
+        attnPatches = td ? td.patch_attention : null;
+        tamPatches = td ? td.patch_tam : null;
+      }
+    }
+
+    // Attention heatmap
+    if (attnPatches && attnPatches.length > 0) {
+      drawHeatmap(`tm-canvas-${model}-attn`, `tm-img-${model}-attn`, attnPatches, gridH, gridW, 0.5, 'relative');
+      drawBoundingBox(`tm-bbox-${model}-attn`, `tm-img-${model}-attn`, attnPatches, gridH, gridW, MODEL_COLORS[model]);
+    } else {
+      clearCanvas(`tm-canvas-${model}-attn`);
+      clearBboxCanvas(`tm-bbox-${model}-attn`);
+    }
+
+    // Detection box overlay
+    renderDetectionBoxesOn(`tm-det-${model}-attn`, `tm-canvas-${model}-attn`, tokenText);
+
+    // TAM heatmap (only if visible)
+    if (tmShowTam) {
+      if (tamPatches && tamPatches.length > 0) {
+        drawHeatmap(`tm-canvas-${model}-tam`, `tm-img-${model}-tam`, tamPatches, gridH, gridW, 0.5, 'relative');
+        drawBoundingBox(`tm-bbox-${model}-tam`, `tm-img-${model}-tam`, tamPatches, gridH, gridW, MODEL_COLORS[model]);
+      } else {
+        clearCanvas(`tm-canvas-${model}-tam`);
+        clearBboxCanvas(`tm-bbox-${model}-tam`);
+      }
+      renderDetectionBoxesOn(`tm-det-${model}-tam`, `tm-canvas-${model}-tam`, tokenText);
+    }
+  }
+
+  renderTokenMatchMetrics();
+}
+
+function drawBoundingBox(canvasId, imgId, patches, gridH, gridW, color, topPct) {
+  topPct = topPct || 0.10;
+  const canvas = document.getElementById(canvasId);
+  const img = document.getElementById(imgId);
+  if (!canvas) return;
+
+  const maxRenderW = 680;
+  const renderW = img && img.naturalWidth > 0 ? Math.min(img.naturalWidth, maxRenderW) : maxRenderW;
+  const renderH = Math.round(renderW * gridH / gridW);
+  canvas.width = renderW;
+  canvas.height = renderH;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, renderW, renderH);
+
+  if (!patches || patches.length === 0) return;
+
+  const k = Math.max(1, Math.ceil(patches.length * topPct));
+  const indexed = patches.map((v, i) => ({ v, i }));
+  indexed.sort((a, b) => b.v - a.v);
+  const topKSet = new Set(indexed.slice(0, k).map(d => d.i));
+
+  const cellW = renderW / gridW;
+  const cellH = renderH / gridH;
+
+  // Parse color to get RGB for fill
+  const hexToRgb = (hex) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return [r, g, b];
+  };
+  const [cr, cg, cb] = hexToRgb(color);
+
+  // Fill top-K patches with semi-transparent color
+  ctx.fillStyle = `rgba(${cr},${cg},${cb},0.35)`;
+  for (const idx of topKSet) {
+    const r = Math.floor(idx / gridW);
+    const c = idx % gridW;
+    ctx.fillRect(c * cellW, r * cellH, cellW, cellH);
+  }
+
+  // Draw border around each top-K patch for crisp edges
+  ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.6)`;
+  ctx.lineWidth = 0.5;
+  ctx.setLineDash([]);
+  for (const idx of topKSet) {
+    const r = Math.floor(idx / gridW);
+    const c = idx % gridW;
+    ctx.strokeRect(c * cellW, r * cellH, cellW, cellH);
+  }
+}
+
+function clearBboxCanvas(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  canvas.width = 1;
+  canvas.height = 1;
+  canvas.getContext('2d').clearRect(0, 0, 1, 1);
+}
+
+// ── Token-match metrics: compare model attention to human/DINO baselines ──
+
+function cosineSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length || a.length === 0) return null;
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+  magA = Math.sqrt(magA);
+  magB = Math.sqrt(magB);
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (magA * magB);
+}
+
+function topKIoU(a, b, topPct) {
+  topPct = topPct || 0.10;
+  if (!a || !b || a.length !== b.length || a.length === 0) return null;
+  const k = Math.max(1, Math.ceil(a.length * topPct));
+  const topA = new Set(a.map((v, i) => ({v, i})).sort((x, y) => y.v - x.v).slice(0, k).map(d => d.i));
+  const topB = new Set(b.map((v, i) => ({v, i})).sort((x, y) => y.v - x.v).slice(0, k).map(d => d.i));
+  let intersection = 0;
+  for (const idx of topA) { if (topB.has(idx)) intersection++; }
+  const union = topA.size + topB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function renderTokenMatchMetrics() {
+  const q = manifest.questions[currentQIdx];
+  if (!tokenMatchPairs.length) {
+    setAllMetricCells('&mdash;');
+    return;
+  }
+  const pair = tokenMatchPairs[selectedMatchIdx];
+  const instrData = dataCache[getCacheKey(q.id, 'instruct', currentLayer)];
+  const thinkData = dataCache[getCacheKey(q.id, 'thinking', currentLayer)];
+  const humanMap = q.human_heatmap && q.human_heatmap.length > 0 ? q.human_heatmap : null;
+  const dinoMap = q.dino_heatmap && q.dino_heatmap.length > 0 ? q.dino_heatmap : null;
+  const detections = q.detections || [];
+  const [gridH, gridW] = q.patch_grid;
+  const tokenText = pair.instruct.raw || '';
+
+  const models = {
+    instruct: { data: instrData, tokenIdx: pair.instruct.originalIdx, prefix: 'i' },
+    thinking: { data: thinkData, tokenIdx: pair.thinking.originalIdx, prefix: 't' },
+  };
+
+  for (const [model, info] of Object.entries(models)) {
+    let attn;
+    if (cmpMovingAvgEnabled && cmpMovingAvgWindowSize > 1 && info.data && info.tokenIdx >= 0) {
+      const windowed = getWindowedData(info.data, info.tokenIdx, cmpMovingAvgWindowSize);
+      attn = windowed.patch_attention;
+    } else {
+      const td = info.data && info.data.token_data ? info.data.token_data[info.tokenIdx] : null;
+      attn = td ? td.patch_attention : null;
+    }
+    const p = info.prefix;
+
+    const hCos = cosineSimilarity(attn, humanMap);
+    const hIoU = topKIoU(attn, humanMap);
+    const dCos = cosineSimilarity(attn, dinoMap);
+    const dIoU = topKIoU(attn, dinoMap);
+    const boxIoU = topKBoxIoU(attn, detections, tokenText, gridH, gridW);
+
+    document.getElementById(`tm-m-${p}-h-cos`).textContent = hCos !== null ? hCos.toFixed(4) : '—';
+    document.getElementById(`tm-m-${p}-h-iou`).textContent = hIoU !== null ? (hIoU * 100).toFixed(1) + '%' : '—';
+    document.getElementById(`tm-m-${p}-d-cos`).textContent = dCos !== null ? dCos.toFixed(4) : '—';
+    document.getElementById(`tm-m-${p}-d-iou`).textContent = dIoU !== null ? (dIoU * 100).toFixed(1) + '%' : '—';
+    document.getElementById(`tm-m-${p}-box-iou`).textContent = boxIoU !== null ? (boxIoU * 100).toFixed(1) + '%' : '—';
+  }
+
+  // Highlight the better value in each column
+  const pairs = [
+    ['tm-m-i-h-cos', 'tm-m-t-h-cos'],
+    ['tm-m-i-h-iou', 'tm-m-t-h-iou'],
+    ['tm-m-i-d-cos', 'tm-m-t-d-cos'],
+    ['tm-m-i-d-iou', 'tm-m-t-d-iou'],
+    ['tm-m-i-box-iou', 'tm-m-t-box-iou'],
+  ];
+  for (const [idA, idB] of pairs) {
+    const elA = document.getElementById(idA);
+    const elB = document.getElementById(idB);
+    elA.classList.remove('tm-metric-better');
+    elB.classList.remove('tm-metric-better');
+    const vA = parseFloat(elA.textContent);
+    const vB = parseFloat(elB.textContent);
+    if (!isNaN(vA) && !isNaN(vB)) {
+      if (vA > vB) elA.classList.add('tm-metric-better');
+      else if (vB > vA) elB.classList.add('tm-metric-better');
+    }
+  }
+}
+
+function setAllMetricCells(val) {
+  ['tm-m-i-h-cos','tm-m-i-h-iou','tm-m-i-d-cos','tm-m-i-d-iou','tm-m-i-box-iou',
+   'tm-m-t-h-cos','tm-m-t-h-iou','tm-m-t-d-cos','tm-m-t-d-iou','tm-m-t-box-iou'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.innerHTML = val; el.classList.remove('tm-metric-better'); }
+  });
+}
+
+function toggleTmTam() {
+  tmShowTam = !tmShowTam;
+  document.getElementById('tm-tam-row').style.display = tmShowTam ? 'grid' : 'none';
+  document.getElementById('tm-tam-toggle').textContent = tmShowTam ? 'Hide TAM' : 'Show TAM';
+  document.getElementById('tm-tam-toggle').classList.toggle('active', tmShowTam);
+  if (tmShowTam) renderTokenMatchHeatmaps();
+}
+
+function renderTokenMatchText(q) {
+  // Build set of matched token indices for each model
+  const instrMatchedSet = new Set();
+  const thinkMatchedSet = new Set();
+  const instrActiveIdx = tokenMatchPairs.length ? tokenMatchPairs[selectedMatchIdx].instruct.originalIdx : -1;
+  const thinkActiveIdx = tokenMatchPairs.length ? tokenMatchPairs[selectedMatchIdx].thinking.originalIdx : -1;
+
+  tokenMatchPairs.forEach(pair => {
+    instrMatchedSet.add(pair.instruct.originalIdx);
+    thinkMatchedSet.add(pair.thinking.originalIdx);
+  });
+
+  for (const model of ['instruct', 'thinking']) {
+    const flow = document.getElementById(`tm-flow-${model}`);
+    const tokens = q.models[model]?.generated_tokens || [];
+    const matchedSet = model === 'instruct' ? instrMatchedSet : thinkMatchedSet;
+    const activeIdx = model === 'instruct' ? instrActiveIdx : thinkActiveIdx;
+    const regions = q.models[model]?.token_regions || {};
+    const answerStart = regions.answer_start_idx != null ? regions.answer_start_idx : 0;
+
+    flow.innerHTML = '';
+    let currentPhase = null;
+    for (const [i, t] of tokens.entries()) {
+      // Phase divider
+      if (t.phase !== currentPhase) {
+        currentPhase = t.phase;
+        const divider = document.createElement('span');
+        divider.className = `phase-divider ${t.phase}`;
+        divider.textContent = t.phase === 'thinking' ? 'Think' : 'Answer';
+        flow.appendChild(divider);
+      }
+      const span = document.createElement('span');
+      span.className = `token phase-${t.phase}`;
+
+      // Moving average window highlighting
+      let windowStart = activeIdx;
+      if (cmpMovingAvgEnabled && cmpMovingAvgWindowSize > 1 && activeIdx >= 0) {
+        windowStart = Math.max(0, activeIdx - cmpMovingAvgWindowSize + 1);
+      }
+
+      // Only answer tokens participate in matching
+      if (i >= answerStart) {
+        if (i === activeIdx) {
+          span.classList.add('active-match');
+        } else if (i >= windowStart && i < activeIdx && cmpMovingAvgEnabled && cmpMovingAvgWindowSize > 1) {
+          span.classList.add('in-window');
+        } else if (matchedSet.has(i)) {
+          span.classList.add('matched');
+          // Find which match pair this belongs to
+          const matchIdx = tokenMatchPairs.findIndex(p =>
+            model === 'instruct' ? p.instruct.originalIdx === i : p.thinking.originalIdx === i
+          );
+          if (matchIdx >= 0) {
+            span.style.cursor = 'pointer';
+            span.title = 'Click to select this match';
+            span.onclick = () => selectMatch(matchIdx);
+          }
+        } else {
+          span.classList.add('unmatched-dim');
+        }
+      } else {
+        // Thinking phase tokens are dimmed
+        span.classList.add('unmatched-dim');
+      }
+
+      span.textContent = t.text;
+      flow.appendChild(span);
+    }
+    if (tokens.length === 0) {
+      flow.innerHTML = '<span style="color:var(--color-text-tertiary)">No data</span>';
+    }
+  }
+}
+
+// ── Token-match text contributions (text data mode) ───────────────
+function renderTokenMatchTextContributions() {
+  const q = manifest.questions[currentQIdx];
+  if (!tokenMatchPairs.length) return;
+  const pair = tokenMatchPairs[selectedMatchIdx];
+
+  for (const model of ['instruct', 'thinking']) {
+    const container = document.getElementById(`tm-text-contrib-${model}`);
+    if (!container) continue;
+    container.innerHTML = '';
+
+    const tokens = q.models[model]?.generated_tokens || [];
+    const tokenIdx = model === 'instruct' ? pair.instruct.originalIdx : pair.thinking.originalIdx;
+    const data = dataCache[getCacheKey(q.id, model, currentLayer)];
+
+    if (!data || !data.token_data || !data.token_data[tokenIdx]) {
+      container.innerHTML = '<div style="font-size:12px;color:var(--color-text-tertiary);padding:8px 0;">No data for this token.</div>';
+      continue;
+    }
+
+    if (tokenIdx === 0) {
+      container.innerHTML = '<div style="font-size:12px;color:var(--color-text-tertiary);padding:8px 0;">First token — no prior text tokens.</div>';
+      continue;
+    }
+
+    const td = data.token_data[tokenIdx];
+    const textAttnRaw = td.text_attention || [];
+    const textTamRaw = td.text_tam || [];
+
+    // Compute totals (include image for percentage)
+    const imgAttnSum = td.patch_attention.length > 0 ? td.patch_attention.reduce((a, b) => a + b, 0) : 0;
+    const imgTamSum = td.patch_tam.length > 0 ? td.patch_tam.reduce((a, b) => a + b, 0) : 0;
+    const textAttnSum = textAttnRaw.length > 0 ? textAttnRaw.reduce((a, b) => a + b, 0) : 0;
+    const textTamSum = textTamRaw.length > 0 ? textTamRaw.reduce((a, b) => a + b, 0) : 0;
+    const totalAttn = imgAttnSum + textAttnSum;
+    const totalTam = imgTamSum + textTamSum;
+
+    // Build items
+    const items = [];
+    for (let i = 0; i < tokenIdx; i++) {
+      items.push({
+        idx: i,
+        tok: tokens[i] || { text: `[${i}]`, phase: 'answer' },
+        attnRaw: i < textAttnRaw.length ? textAttnRaw[i] : 0,
+        tamRaw: i < textTamRaw.length ? textTamRaw[i] : 0,
+      });
+    }
+
+    const K = 10;
+    let attnItems, tamItems;
+    if (items.length > K) {
+      attnItems = [...items].sort((a, b) => b.attnRaw - a.attnRaw).slice(0, K).sort((a, b) => a.idx - b.idx);
+      tamItems = [...items].sort((a, b) => b.tamRaw - a.tamRaw).slice(0, K).sort((a, b) => a.idx - b.idx);
+    } else {
+      attnItems = items;
+      tamItems = items;
+    }
+
+    // Dual column layout
+    const dual = document.createElement('div');
+    dual.className = 'dual-cols';
+
+    // Attention column
+    const attnCol = document.createElement('div');
+    const attnHeader = document.createElement('div');
+    attnHeader.className = 'dual-col-header';
+    attnHeader.innerHTML = '<div class="legend-swatch" style="background:#E24B4A"></div> Attention';
+    attnCol.appendChild(attnHeader);
+    const attnList = document.createElement('div');
+    attnList.className = 'single-list';
+    const maxAttn = Math.max(...attnItems.map(x => x.attnRaw), 0.001);
+    let attnPhase = null;
+    for (const item of attnItems) {
+      if (item.tok.phase !== attnPhase) {
+        attnPhase = item.tok.phase;
+        const ph = document.createElement('div');
+        ph.className = `bar-phase-label ${item.tok.phase}`;
+        ph.textContent = item.tok.phase === 'thinking' ? 'Thinking' : 'Answer';
+        attnList.appendChild(ph);
+      }
+      const pctStr = totalAttn > 0 ? (item.attnRaw / totalAttn * 100).toFixed(1) + '%' : '';
+      const label = `${item.tok.text} [${item.idx}]`;
+      attnList.appendChild(createSingleBarRow(label, item.attnRaw / maxAttn, pctStr, 'attn', 'left'));
+    }
+    attnCol.appendChild(attnList);
+    if (items.length > K) {
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:10px;color:var(--color-text-tertiary);padding:4px 0;text-align:center;';
+      note.textContent = `Top ${K} of ${items.length}`;
+      attnCol.appendChild(note);
+    }
+
+    // TAM column
+    const tamCol = document.createElement('div');
+    const tamHeader = document.createElement('div');
+    tamHeader.className = 'dual-col-header';
+    tamHeader.style.justifyContent = 'flex-end';
+    tamHeader.innerHTML = 'TAM <div class="legend-swatch" style="background:#378ADD"></div>';
+    tamCol.appendChild(tamHeader);
+    const tamList = document.createElement('div');
+    tamList.className = 'single-list';
+    const maxTam = Math.max(...tamItems.map(x => x.tamRaw), 0.001);
+    let tamPhase = null;
+    for (const item of tamItems) {
+      if (item.tok.phase !== tamPhase) {
+        tamPhase = item.tok.phase;
+        const ph = document.createElement('div');
+        ph.className = `bar-phase-label ${item.tok.phase}`;
+        ph.style.textAlign = 'right';
+        ph.textContent = item.tok.phase === 'thinking' ? 'Thinking' : 'Answer';
+        tamList.appendChild(ph);
+      }
+      const pctStr = totalTam > 0 ? (item.tamRaw / totalTam * 100).toFixed(1) + '%' : '';
+      const label = `${item.tok.text} [${item.idx}]`;
+      tamList.appendChild(createSingleBarRow(label, item.tamRaw / maxTam, pctStr, 'tam', 'right'));
+    }
+    tamCol.appendChild(tamList);
+    if (items.length > K) {
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:10px;color:var(--color-text-tertiary);padding:4px 0;text-align:center;';
+      note.textContent = `Top ${K} of ${items.length}`;
+      tamCol.appendChild(note);
+    }
+
+    dual.appendChild(attnCol);
+    dual.appendChild(tamCol);
+    container.appendChild(dual);
+  }
+}
+
 // ── Keyboard navigation ────────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'SELECT') return;
+
+  // Token match mode: arrow up/down to cycle matches
+  if (currentModel === 'comparison' && comparisonSubMode === 'tokenmatch' && tokenMatchPairs.length > 0) {
+    if (e.key === 'ArrowDown' && selectedMatchIdx < tokenMatchPairs.length - 1) {
+      e.preventDefault();
+      selectMatch(selectedMatchIdx + 1);
+      return;
+    } else if (e.key === 'ArrowUp' && selectedMatchIdx > 0) {
+      e.preventDefault();
+      selectMatch(selectedMatchIdx - 1);
+      return;
+    }
+  }
+
   const tokens = getTokens();
   if (e.key === 'ArrowRight' && selectedTokenIdx < tokens.length - 1) {
     e.preventDefault();
